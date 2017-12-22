@@ -262,25 +262,26 @@ Ident <name>
 
   AssignExpr                      (. int position; .)
   =                                (. position=ParseList.length(); .)
-CondExpr     
+  CondExpr                         (. if (!Assignable(position)) SemErr(L"Not assignable"); .)
+
     [(
     "="                     
-    AssignExpr
+    AssignExpr                    (. .)
                                   (. ParseList.insert(position,L"(MOV " ); .)
                                   (. ParseList.append(L") " );.)
   | "=*"                     
 AssignExpr
                                   (. ParseList.insert(position,L"(MULTMOV " ); .)
                                   (. ParseList.append(L") " );.)
-  | "=/"                                     
+  | "=/"
     AssignExpr
                 (. ParseList.insert(position,L"(DIVMOV " ); .)
                 (. ParseList.append(L") " );.)
-  | "=%"                                     
+  | "=%"
     AssignExpr
                 (. ParseList.insert(position,L"(MODMOV " ); .)
                 (. ParseList.append(L") " );.)
-  | "=+"                                     
+  | "=+"
     AssignExpr
                 (. ParseList.insert(position,L"(ADDMOV " ); .)
                 (. ParseList.append(L") " );.)

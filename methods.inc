@@ -1,3 +1,11 @@
+bool Assignable(int position) {
+    std::wstring name = GetNodeName(position);
+
+    return name == L"VAR" ||
+           name == L"INDEX" ||
+           name == L"PTR";
+}
+
 bool IsDeclaredLocal(Name name1)
 {  std::wstring name=std::wstring(name1);
     std::string::size_type found;
