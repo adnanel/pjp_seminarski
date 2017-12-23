@@ -9,4 +9,3 @@ subr (c) {
   extrn a;
   c=a;
 }
-
