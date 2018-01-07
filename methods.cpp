@@ -1,4 +1,10 @@
 
+
+// TODO - skoro svim dodjelama treba revidirati
+//        da li je ona var kojoj dodjeljujem fakat var?
+//        ako nije var onda je izraz, tj *a
+//        onda treba upisati u [ebx]
+
 bool Assignable(int position) {
     std::wstring name = GetNodeName(position);
 
@@ -154,6 +160,19 @@ std::map< std::wstring, std::vector< std::wstring > > FunctionLocals;
 
 std::wstring CurrentFunction;
 
+/**
+ * Generator pomocnih labela za "male skokove" (petlje, uvjetni skokovi i sl)
+ */
+std::wstring NextLabel() {
+    static int cnt = 0;
+    ++cnt;
+
+    std::wstringstream ss;
+    ss << L"_tmp_label_" << cnt;
+
+    return ss.str();
+}
+
 void Compile(int position, std::wstringstream& data, std::wstringstream& bss, std::wstringstream& text)
 {
     wstring nodename,elemname;
@@ -182,8 +201,28 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         }
     }
     else if (nodename== L"ADDMOV") {
-        // todo
-        text<<"TODO - ADDMOV" << endl;
+        // X += Y
+        // z je pozicija od X
+        // q je pozicija od Y
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        text << "; add mov " << endl;
+
+        if ( GetNodeName(q) == L"INT" ) {
+            // X += const
+            text << " add [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+        } else if ( GetNodeName(q) == L"VAR" ) {
+            // X += var
+            text << " add [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+        } else {
+            // X += expr
+            Compile(q, data, bss, text);
+            text << " add [" << GetElemName(z, 1) << "], eax" << endl;
+        }
+
+        // rezultat izraza treba da bude vrijednost varijable
+        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
     }
     else if (nodename== L"ADDROF") {
         // todo
@@ -211,8 +250,28 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         }
     }
     else if (nodename== L"ANDMOV") {
-        // todo
-        text<<"TODO - ANDMOV" << endl;
+        // X &= Y
+        // z je pozicija od X
+        // q je pozicija od Y
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        text << "; and mov " << endl;
+
+        if ( GetNodeName(q) == L"INT" ) {
+            // X &= const
+            text << " and [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+        } else if ( GetNodeName(q) == L"VAR" ) {
+            // X &= var
+            text << " and [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+        } else {
+            // X &= expr
+            Compile(q, data, bss, text);
+            text << " and [" << GetElemName(z, 1) << "], eax" << endl;
+        }
+
+        // rezultat izraza treba da bude vrijednost varijable
+        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
     }
     else if (nodename== L"ARG") {
         // todo
@@ -269,8 +328,28 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         text<<"TODO - DIV" << endl;
     }
     else if (nodename== L"DIVMOV") {
-        // todo
-        text<<"TODO - DIVMOV" << endl;
+        // X /= Y
+        // z je pozicija od X
+        // q je pozicija od Y
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        text << "; idiv mov " << endl;
+
+        if ( GetNodeName(q) == L"INT" ) {
+            // X /= const
+            text << " idiv [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+        } else if ( GetNodeName(q) == L"VAR" ) {
+            // X /= var
+            text << " idiv [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+        } else {
+            // X /= expr
+            Compile(q, data, bss, text);
+            text << " idiv [" << GetElemName(z, 1) << "], eax" << endl;
+        }
+
+        // rezultat izraza treba da bude vrijednost varijable
+        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
     }
     else if (nodename== L"EQU") {
         // todo
@@ -293,32 +372,46 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         elemname = GetElemName(position, 1);
 
         FunctionParameters[CurrentFunction].push_back(elemname);
+
+        text << " %define " << elemname << " ebp + "
+             << (4 + FunctionParameters[CurrentFunction].size() * 4) << endl;
+
     }
     else if (nodename== L"FUNCCALL") {
-        // todo
-        text<<"TODO - FUNCCALL" << endl;
+        //todo
+        text << L" TODO - FUNC CALL " << endl;
     }
     else if (nodename== L"FUNCDEF") {
-        elemname=GetElemName(position,1);
+        elemname = L"_" + GetElemName(position,1);
         CurrentFunction = elemname;
 
         text << L" GLOBAL "<< elemname<< endl;
         text << endl << elemname<<":" << endl;
         text << L" PUSH EBP"<<endl<< L" MOV EBP,ESP"<<endl << L" SUB ESP,"<<elemname<<L"_len"<<endl;
 
+        // funcdef must be followed by a fheader
         Compile (ElemPos(position,2), data, bss, text);
-        Compile (ElemPos(position,3), data, bss, text);
-        text << L" MOV ESP,EBP" << endl << L" RET " << endl;
 
-        data << elemname << "_len db " << (FunctionParameters[CurrentFunction].size() * 4) << endl;
+        // and then by a block
+        Compile (ElemPos(position,3), data, bss, text);
+
+        text << CurrentFunction << L"_end:" << endl;
+
+        text << L" MOV ESP,EBP" << endl
+             << L" POP EBP" << endl
+             << L" RET " << endl;
+
+        // add param length data entry
+        data << elemname << "_len db " << (FunctionLocals[CurrentFunction].size() * 4) << endl;
     }
     else if (nodename== L"GARRDEF") {
         // todo
         text<<"TODO - GARRDEF" << endl;
     }
     else if (nodename== L"GOTO") {
-        // todo
-        text<<"TODO - GOTO" << endl;
+        elemname = GetElemName(position, 1);
+
+        text << L" jmp label_" << elemname << endl;
     }
     else if (nodename== L"GREATEREQUTHAN") {
         // todo
@@ -353,32 +446,170 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         text << L" MOV EAX,"<< GetElemName(position,1)<< endl ;
     }
     else if (nodename== L"ISEQUMOV") {
-        // todo
-        text<<"TODO - ISEQUMOV" << endl;
+        // X === Y
+        // z je pozicija od X
+        // q je pozicija od Y
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        text << "; isequ mov " << endl;
+
+        if ( GetNodeName(q) == L"INT" ) {
+            // X === const
+            text << " cmp [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+        } else if ( GetNodeName(q) == L"VAR" ) {
+            // X === var
+            text << " cmp [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+        } else {
+            // X === expr
+            Compile(q, data, bss, text);
+            text << " cmp [" << GetElemName(z, 1) << "], eax" << endl;
+        }
+
+        text << " sete [" << GetElemName(z, 1) << "]" << endl;
+
+        // rezultat izraza treba da bude vrijednost varijable
+        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
     }
     else if (nodename== L"ISGREATEREQUMOV") {
-        // todo
-        text<<"TODO - ISGREATEREQUMOV" << endl;
+        // X >== Y
+        // z je pozicija od X
+        // q je pozicija od Y
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        text << "; isgreaterequmov mov " << endl;
+
+        if ( GetNodeName(q) == L"INT" ) {
+            // X >== const
+            text << " cmp [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+        } else if ( GetNodeName(q) == L"VAR" ) {
+            // X >== var
+            text << " cmp [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+        } else {
+            // X >== expr
+            Compile(q, data, bss, text);
+            text << " cmp [" << GetElemName(z, 1) << "], eax" << endl;
+        }
+
+        text << " setge [" << GetElemName(z, 1) << "]" << endl;
+
+        // rezultat izraza treba da bude vrijednost varijable
+        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
     }
     else if (nodename== L"ISGREATERMOV") {
-        // todo
-        text<<"TODO - ISGREATERMOV" << endl;
+        // X => Y
+        // z je pozicija od X
+        // q je pozicija od Y
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        text << "; isgreatermov mov " << endl;
+
+        if ( GetNodeName(q) == L"INT" ) {
+            // X => const
+            text << " cmp [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+        } else if ( GetNodeName(q) == L"VAR" ) {
+            // X => var
+            text << " cmp [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+        } else {
+            // X => expr
+            Compile(q, data, bss, text);
+            text << " cmp [" << GetElemName(z, 1) << "], eax" << endl;
+        }
+
+        text << " setg [" << GetElemName(z, 1) << "]" << endl;
+
+        // rezultat izraza treba da bude vrijednost varijable
+        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
     }
     else if (nodename== L"ISLESSEQUMOV") {
-        // todo
-        text<<"TODO - ISLESSEQUMOV" << endl;
+        // X <== Y
+        // z je pozicija od X
+        // q je pozicija od Y
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        text << "; islessequmov mov " << endl;
+
+        if ( GetNodeName(q) == L"INT" ) {
+            // X <== const
+            text << " cmp [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+        } else if ( GetNodeName(q) == L"VAR" ) {
+            // X <== var
+            text << " cmp [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+        } else {
+            // X <== expr
+            Compile(q, data, bss, text);
+            text << " cmp [" << GetElemName(z, 1) << "], eax" << endl;
+        }
+
+        text << " setle [" << GetElemName(z, 1) << "]" << endl;
+
+        // rezultat izraza treba da bude vrijednost varijable
+        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
     }
     else if (nodename== L"ISLESSMOV") {
-        // todo
-        text<<"TODO - ISLESSMOV" << endl;
+        // X =< Y
+        // z je pozicija od X
+        // q je pozicija od Y
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        text << "; islessmov mov " << endl;
+
+        if ( GetNodeName(q) == L"INT" ) {
+            // X =< const
+            text << " cmp [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+        } else if ( GetNodeName(q) == L"VAR" ) {
+            // X =< var
+            text << " cmp [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+        } else {
+            // X =< expr
+            Compile(q, data, bss, text);
+            text << " cmp [" << GetElemName(z, 1) << "], eax" << endl;
+        }
+
+        if ( GetNodeName(q) == L"VAR" ) {
+            text << " setl [" << GetElemName(z, 1) << "]" << endl;
+            text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
+        } else {
+            text << " setl [ebx]" << endl;
+            text << " mov eax, [ebx]" << endl;
+        }
+
+
     }
     else if (nodename== L"ISNEQUMOV") {
-        // todo
-        text<<"TODO - ISNEQUMOV" << endl;
+        // X =!= Y
+        // z je pozicija od X
+        // q je pozicija od Y
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        text << "; isnequ mov " << endl;
+
+        if ( GetNodeName(q) == L"INT" ) {
+            // X =!= const
+            text << " cmp [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+        } else if ( GetNodeName(q) == L"VAR" ) {
+            // X =!= var
+            text << " cmp [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+        } else {
+            // X =!= expr
+            Compile(q, data, bss, text);
+            text << " cmp [" << GetElemName(z, 1) << "], eax" << endl;
+        }
+
+        text << " setne [" << GetElemName(z, 1) << "]" << endl;
+
+        // rezultat izraza treba da bude vrijednost varijable
+        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
     }
     else if (nodename== L"LABEL") {
-        // todo
-        text<<"TODO - LABEL" << endl;
+        elemname = GetElemName(position, 1);
+
+        text << L"label_" << elemname << L":" << endl;
     }
     else if (nodename== L"LARRDEF") {
         // todo
@@ -397,14 +628,42 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         text<<"TODO - LSHIFT" << endl;
     }
     else if (nodename== L"LSHIFTMOV") {
-        // todo
-        text<<"TODO - LSHIFTMOV" << endl;
+        // X <<= Y
+        // z je pozicija od X
+        // q je pozicija od Y
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        text << "; shl mov " << endl;
+
+        if ( GetNodeName(q) == L"INT" ) {
+            // X <<= const
+            text << " shl [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+        } else if ( GetNodeName(q) == L"VAR" ) {
+            // X <<= var
+            text << " shl [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+        } else {
+            // X <<= expr
+            Compile(q, data, bss, text);
+            text << " shl [" << GetElemName(z, 1) << "], eax" << endl;
+        }
+
+        // rezultat izraza treba da bude vrijednost varijable
+        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
     }
     else if (nodename== L"LVARDEF") {
         elemname = GetElemName(position, 1);
 
-        // todo
-        text<<"TODO - LVARDEF - " << elemname << endl;
+        text << " %define " << elemname
+             << " dword ebp - " << (FunctionLocals[CurrentFunction].size() * 4) << endl;
+
+        FunctionLocals[CurrentFunction].push_back( elemname );
+
+        z = ElemPos(position, 2);
+
+        if ( GetNodeName(z) == L"INIT" ) {
+            Compile(z, data, bss, text);
+        }
     }
     else if (nodename== L"MOD") {
         // todo
@@ -483,8 +742,28 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         }
     }
     else if (nodename== L"MULTMOV") {
-        // todo
-        text<<"TODO - MULTMOV" << endl;
+        // X *= Y
+        // z je pozicija od X
+        // q je pozicija od Y
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        text << "; imul mov " << endl;
+
+        if ( GetNodeName(q) == L"INT" ) {
+            // X *= const
+            text << " imul [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+        } else if ( GetNodeName(q) == L"VAR" ) {
+            // X *= var
+            text << " imul [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+        } else {
+            // X *= expr
+            Compile(q, data, bss, text);
+            text << " imul [" << GetElemName(z, 1) << "], eax" << endl;
+        }
+
+        // rezultat izraza treba da bude vrijednost varijable
+        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
     }
     else if (nodename== L"NEQU") {
         // todo
@@ -516,8 +795,28 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         }
     }
     else if (nodename== L"ORMOV") {
-        // todo
-        text<<"TODO - ORMOV" << endl;
+        // X |= Y
+        // z je pozicija od X
+        // q je pozicija od Y
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        text << "; or mov " << endl;
+
+        if ( GetNodeName(q) == L"INT" ) {
+            // X |= const
+            text << " or [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+        } else if ( GetNodeName(q) == L"VAR" ) {
+            // X |= var
+            text << " or [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+        } else {
+            // X |= expr
+            Compile(q, data, bss, text);
+            text << " or [" << GetElemName(z, 1) << "], eax" << endl;
+        }
+
+        // rezultat izraza treba da bude vrijednost varijable
+        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
     }
     else if (nodename== L"POSTDEC") {
         // todo
@@ -540,20 +839,48 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         text<<"TODO - PTR" << endl;
     }
     else if (nodename== L"RETURN") {
-        // todo
-        text<<"TODO - RETURN" << endl;
+        text << " jmp " << CurrentFunction << "_end" << endl;
     }
     else if (nodename== L"RETURNPARAM") {
-        // todo
-        text<<"TODO - RETURNPARAM" << endl;
+        z = ElemPos(position, 1);
+
+        if ( GetNodeName(z) == L"INT" ) {
+            text << L" mov eax, dword " << GetElemName(z, 1) << endl;
+        } else if ( GetNodeName(z) == L"VAR" ) {
+            text << L" mov eax, dword [" << GetElemName(z, 1) << L"]" << endl;
+        } else {
+            Compile(z, data, bss, text);
+        }
+
+        text << " jmp " << CurrentFunction << "_end" << endl;
     }
     else if (nodename== L"RSHIFT") {
         // todo
         text<<"TODO - RSHIFT" << endl;
     }
     else if (nodename== L"RSHIFTMOV") {
-        // todo
-        text<<"TODO - RSHIFTMOV" << endl;
+        // X >>= Y
+        // z je pozicija od X
+        // q je pozicija od Y
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        text << "; shr mov " << endl;
+
+        if ( GetNodeName(q) == L"INT" ) {
+            // X >>= const
+            text << " shr [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+        } else if ( GetNodeName(q) == L"VAR" ) {
+            // X >>= var
+            text << " shr [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+        } else {
+            // X >>= expr
+            Compile(q, data, bss, text);
+            text << " shr [" << GetElemName(z, 1) << "], eax" << endl;
+        }
+
+        // rezultat izraza treba da bude vrijednost varijable
+        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
     }
     else if (nodename== L"SAMEAS") {
         // todo
@@ -585,28 +912,69 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         }
     }
     else if (nodename== L"SUBMOV") {
-        // todo
-        text<<"TODO - SUBMOV" << endl;
+        // X -= Y
+        // z je pozicija od X
+        // q je pozicija od Y
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        text << "; sub mov " << endl;
+
+        if ( GetNodeName(q) == L"INT" ) {
+            // X -= const
+            text << " sub [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+        } else if ( GetNodeName(q) == L"VAR" ) {
+            // X -= var
+            text << " sub [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+        } else {
+            // X -= expr
+            Compile(q, data, bss, text);
+            text << " sub [" << GetElemName(z, 1) << "], eax" << endl;
+        }
+
+        // rezultat izraza treba da bude vrijednost varijable
+        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
     }
     else if (nodename== L"SWITCH") {
         // todo
         text<<"TODO - SWITCH" << endl;
     }
+    else if (nodename== L"UNEG") {
+        z = ElemPos(position, 1);
+
+        text << "; uneg";
+
+        if ( GetNodeName(z) == L"INT" ) {
+            text << " mov eax, " << GetElemName(z, 1) << endl;
+        } else if ( GetNodeName(z) == L"VAR" ) {
+            text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
+        } else {
+            Compile(z, data, bss, text);
+        }
+
+        text << " neg eax";
+    }
+    else if (nodename== L"UNOT") {
+        z = ElemPos(position, 1);
+
+        text << "; unot";
+
+        if ( GetNodeName(z) == L"INT" ) {
+            text << " mov eax, " << GetElemName(z, 1) << endl;
+        } else if ( GetNodeName(z) == L"VAR" ) {
+            text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
+        } else {
+            Compile(z, data, bss, text);
+        }
+
+        text << " not eax";
+    }
     else if (nodename== L"UMINUS") {
         // todo
         text<<"TODO - UMINUS" << endl;
     }
-    else if (nodename== L"UNEG") {
-        // todo
-        text<<"TODO - UNEG" << endl;
-    }
-    else if (nodename== L"UNOT") {
-        // todo
-        text<<"TODO - UNOT" << endl;
-    }
     else if (nodename== L"UPLUS") {
-        // todo
-        text<<"TODO - UPLUS" << endl;
+        // Podrzan radi simetrije sa unarnim minusom, ali nema prave funkcije.
     }
     else if (nodename== L"VAR") {
         text << L" MOV EAX, [" << GetElemName(position,1)<<"]"<< endl;
@@ -637,7 +1005,27 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         }
     }
     else if (nodename== L"XORMOV ") {
-        // todo
-        text<<"TODO - XORMOV" << endl;
+        // X ^= Y
+        // z je pozicija od X
+        // q je pozicija od Y
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        text << "; xor mov " << endl;
+
+        if ( GetNodeName(q) == L"INT" ) {
+            // X ^= const
+            text << " xor [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+        } else if ( GetNodeName(q) == L"VAR" ) {
+            // X ^= var
+            text << " xor [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+        } else {
+            // X ^= expr
+            Compile(q, data, bss, text);
+            text << " xor [" << GetElemName(z, 1) << "], eax" << endl;
+        }
+
+        // rezultat izraza treba da bude vrijednost varijable
+        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
     }
 }

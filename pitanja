@@ -1,0 +1,10 @@
+- ReturnStatement, treba uzeti position da bi se kompajliralo
+
+- Return, sta ako nekad ima nekad nema return val? Bez val da podrazumjeva 0 mozda?
+
+- Return, da li mora imati () oko val?
+
+- Return, da li je OK uraditi jump na kraj rutine da se ne duplicira kod zavrsetka funkcije?
+
+- Da li je dozvoljen var shadowing?
+

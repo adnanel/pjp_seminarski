@@ -57,6 +57,7 @@ EOF                              (. ParseList+=L")"; .)
 
                                  (. Compile(0, data, bss, text); .)
 
+                                 (. std::wcout << L"%include \"asm_io.inc\"" << std::endl; .)
                                  (. std::wcout << data.str() << std::endl; .)
                                  (. std::wcout << bss.str() << std::endl; .)
                                  (. std::wcout << text.str() << std::endl; .)
@@ -221,7 +222,7 @@ Ident<name>                      (.  ParseList.append(L"(GOTO ");ParseList.appen
 
   ReturnStatement                (. int position; bool paramExists; .)
     =                            (. paramExists = false; .)
-"return"
+"return"                         (. position=ParseList.length(); .)
   [ WEAK  '('
     Expression                    (. paramExists = true; .)
   WEAK  ')' ]

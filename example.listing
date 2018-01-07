@@ -1,49 +1,71 @@
-     1                                  segment .data;
-     2                                  
-     3 00000000 04                      main_len db 4
-     4 00000001 08                      subr_len db 8
-     5                                  
-     6                                  segment .bss;
-     7                                  
-     8 00000000 <res 00000004>          a resd 1
-     9                                  
-    10                                  segment .text;
-    11                                  
-    12                                   GLOBAL main
-    13                                  
-    14                                  main:
-    15                                   %define b edx
+     1                                  %include "asm_io.inc"
+     1                              <1> 	extern  read_int, print_int, print_string
+     2                              <1> 	extern	read_char, print_char, print_nl
+     3                              <1> 	extern  sub_dump_regs, sub_dump_mem, sub_dump_math, sub_dump_stack
+     4                              <1> 
+     5                              <1> %macro 	dump_regs 1
+     6                              <1> 	push	  dword %1
+     7                              <1> 	call	  sub_dump_regs
+     8                              <1> %endmacro
+     9                              <1> 
+    10                              <1> 
+    11                              <1> ;
+    12                              <1> ; usage: dump_mem label, start-address, # paragraphs
+    13                              <1> %macro  dump_mem 3
+    14                              <1> 	push	 dword %1
+    15                              <1> 	push	 dword %2
+    16                              <1> 	push	 dword %3
+    17                              <1> 	call	 sub_dump_mem
+    18                              <1> %endmacro
+    19                              <1> 
+    20                              <1> %macro	dump_math 1
+    21                              <1> 	push	 dword %1
+    22                              <1> 	call	 sub_dump_math
+    23                              <1> %endmacro
+    24                              <1> 
+    25                              <1> %macro  dump_stack 3
+    26                              <1> 	push	 dword %3
+    27                              <1>         push     dword %2
+    28                              <1> 	push	 dword %1
+    29                              <1>         call     sub_dump_stack
+    30                              <1> %endmacro
+     2                                  segment .data;
+     3                                  
+     4 00000000 04                      bmain_len db 4
+     5 00000001 04                      subr_len db 4
+     6                                  
+     7                                  segment .bss;
+     8                                  
+     9 00000000 <res 00000004>          a resd 1
+    10                                  
+    11                                  segment .text;
+    12                                  
+    13                                   GLOBAL _bmain
+    14                                  
+    15                                  _bmain:
     16 00000000 55                       PUSH EBP
     17 00000001 89E5                     MOV EBP,ESP
-    18 00000003 81EC[00000000]           SUB ESP,main_len
-    19 00000009 B802000000               MOV EAX,2
-    20 0000000E 0302                     ADD EAX,[b]
-    21 00000010 A3[00000000]             MOV [a],EAX
-    22 00000015 89EC                     MOV ESP,EBP
-    23 00000017 C3                       RET 
-    24                                   GLOBAL subr
-    25                                  
-    26                                  subr:
-    27                                   %define b eax
-    28                                   %define c eax
-    29                                   %define d eax
-    30 00000018 0300                     ADD EAX,[b]
-    31                                  
-    32 0000001A 55                       PUSH EBP
-    33 0000001B 89E5                     MOV EBP,ESP
-    34 0000001D 81EC[01000000]           SUB ESP,subr_len
-    35 00000023 A1[00000000]             MOV EAX, [a]
-    36 00000028 8900                     MOV [c],EAX
-    37 0000002A C705[00000000]0200-      MOV DWORD [a],2
-    37 00000032 0000               
-    38 00000034 8B00                     MOV EAX, [b]
-    39 00000036 2B00                     SUB EAX,[c]
-    40 00000038 A3[00000000]             MOV [a],EAX
-    41 0000003D 8B00                     MOV EAX, [b]
-    42 0000003F 2B05[00000000]           SUB EAX,[a]
-    43 00000045 2B00                     SUB EAX,[c]
-    44 00000047 A3[00000000]             MOV [a],EAX
-    45 0000004C 89EC                     MOV ESP,EBP
-    46 0000004E C3                       RET 
-    47                                  
-    48                                  ;(B (GVARDEF a ) (FUNCDEF main (FHEADER (FPARAM b )) (BLOCK (DECLSTAT (LVARDEF a ) (MOV (VAR a)(ADD (INT 2)(VAR b)) ) ) ) ) (FUNCDEF subr (FHEADER (FPARAM c )(FPARAM g )) (BLOCK (DECLSTAT (LVARDEF b ) (LVARDEF c ) (
+    18 00000003 81EC[00000000]           SUB ESP,bmain_len
+    19                                   %define b ebp + 8
+    20                                   %define a dword ebp - 0
+    21                                   %define d dword ebp - 4
+    22 00000009 B802000000               MOV EAX,2
+    23 0000000E 034508                   ADD EAX,[b]
+    24 00000011 898500000000             MOV [a],EAX
+    25 00000017 89EC                     MOV ESP,EBP
+    26 00000019 C3                       RET 
+    27                                   GLOBAL subr
+    28                                  
+    29                                  subr:
+    30 0000001A 55                       PUSH EBP
+    31 0000001B 89E5                     MOV EBP,ESP
+    32 0000001D 81EC[01000000]           SUB ESP,subr_len
+    33                                   %define c ebp + 8
+    34                                   %define c dword ebp - 0
+    35                                   %define hahj dword ebp - 4
+    36 00000023 8B8500000000             MOV EAX, [a]
+    37 00000029 898500000000             MOV [c],EAX
+    38 0000002F 89EC                     MOV ESP,EBP
+    39 00000031 C3                       RET 
+    40                                  
+    41                                  ;(B (GVARDEF a ) (FUNCDEF bmain (FHEADER (FPARAM b )) (BLOCK (DECLSTAT (LVARDEF a ) (LVARDEF d ) (MOV (VAR a)(ADD (INT 2)(VAR b)) ) ) ) ) (FUNCDEF subr (FHEADER (FPARAM c )) (BLOCK (DECLSTAT (LVARDEF c ) (LVARDEF ha

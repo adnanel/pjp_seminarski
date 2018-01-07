@@ -155,6 +155,7 @@ void Parser::B()
 	std::wstringstream text;
 	text << L"segment .text;" << std::endl << std::endl;
 	Compile(0, data, bss, text);
+	std::wcout << L"%include \"asm_io.inc\"" << std::endl;
 	std::wcout << data.str() << std::endl;
 	std::wcout << bss.str() << std::endl;
 	std::wcout << text.str() << std::endl;
@@ -528,6 +529,7 @@ void Parser::ReturnStatement()
 	int position; bool paramExists;
 	paramExists = false;
 	Expect(23);
+	position=ParseList.length();
 	if (la->kind == 12) {
 		ExpectWeak(12, 4);
 		Expression();
