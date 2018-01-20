@@ -168,30 +168,6 @@ void CmpToBool(const std::wstring& jinstr, std::wstringstream& text) {
          << L" " << one << L":" << std::endl;
 }
 
-void PrintCompare(int z, int q, std::wstringstream& text) {
-    auto zType = GetNodeName(z);
-    auto qType = GetNodeName(q);
-
-    text << L" mov eax, ";
-    if ( zType == L"VAR" ) {
-        text << L"[" << GetElemName(z, 1) << L"]" << std::endl;
-    } else if ( zType == L"INT" ) {
-        text << L"dword " << GetElemName(z, 1) << std::endl;
-    } else {
-        text << L"TODO PrintCompare zType - " << zType << std::endl;
-    }
-
-    text << L" cmp eax, ";
-
-    if ( qType == L"VAR" ) {
-        text << L"[" << GetElemName(q, 1) << L"]" << std::endl;
-    } else if ( qType == L"INT" || qType == L"ONUMBER" ) {
-        text << L"dword " << GetElemName(q, 1) << std::endl;
-    } else {
-        text << L"TODO PrintCompare - qType >" << qType << "<" << std::endl;
-    }
-
-}
 
 /**
  * Za generisanje addmov/divmov/submov/etc
@@ -206,7 +182,7 @@ void OpMov(int position, const std::wstring& opInstr,
 
     text << "; opmov " << endl;
     if ( GetNodeName(z) == L"VAR" ) {
-        text << L" lea ebx, [" << GetElemName(z, 1) << "]" << std::endl;
+        text << L" lea ebx, [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << std::endl;
         text << L" mov eax, [ebx]" << std::endl;
         text << L" push ebx" << std::endl;
 
@@ -215,7 +191,7 @@ void OpMov(int position, const std::wstring& opInstr,
             text << L" " << opInstr << L" eax, dword " << GetElemName(q, 1) << endl;;
         } else if (GetNodeName(q) == L"VAR") {
             // X op var
-            text << L" " << opInstr << L" eax, [" << GetElemName(q, 1) << "]" << endl;
+            text << L" " << opInstr << L" eax, [" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]" << endl;
         } else {
             // X op expr
             text << L" push eax" << std::endl;
@@ -262,11 +238,15 @@ struct LocalVariable {
 
     std::wstring GetName() const {
         std::wstringstream ss;
-        ss << function << "_" << name;
+        if ( function != L"" ) {
+            ss << function << "_";
+        }
+        ss << name;
 
         return ss.str();
     }
 };
+
 
 int CalculateVarsSize(const std::vector<LocalVariable>& vars) {
     int total = 0;
@@ -288,6 +268,49 @@ std::wstring CurrentLoopEndLabel;
 
 std::wstring CurrentSwitchStartLabel;
 std::wstring CurrentSwitchEndLabel;
+
+
+LocalVariable GetLocalVar(const std::wstring& elemname, bool isArray = false, int arrLen = 1) {
+    bool isLocal = false;
+    for ( const auto& n : FunctionLocals[CurrentFunction] ) {
+        if ( n.name == elemname ) {
+            isLocal = true;
+            break;
+        }
+    }
+
+    if ( isArray ) {
+        return LocalVariable(isLocal ? CurrentFunction : L"", elemname, arrLen);
+    }
+    return LocalVariable(isLocal ? CurrentFunction : L"", elemname);
+}
+
+
+
+void PrintCompare(int z, int q, std::wstringstream& text) {
+    auto zType = GetNodeName(z);
+    auto qType = GetNodeName(q);
+
+    text << L" mov eax, ";
+    if ( zType == L"VAR" ) {
+        text << L"[" << GetLocalVar( GetElemName(z, 1) ).GetName() << L"]" << std::endl;
+    } else if ( zType == L"INT" ) {
+        text << L"dword " << GetElemName(z, 1) << std::endl;
+    } else {
+        text << L"TODO PrintCompare zType - " << zType << std::endl;
+    }
+
+    text << L" cmp eax, ";
+
+    if ( qType == L"VAR" ) {
+        text << L"[" <<GetLocalVar( GetElemName(q, 1) ).GetName() << L"]" << std::endl;
+    } else if ( qType == L"INT" || qType == L"ONUMBER" ) {
+        text << L"dword " << GetElemName(q, 1) << std::endl;
+    } else {
+        text << L"TODO PrintCompare - qType >" << qType << "<" << std::endl;
+    }
+
+}
 
 /**
  * Generator pomocnih labela za "male skokove" (petlje, uvjetni skokovi i sl)
@@ -319,7 +342,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         else
         if (GetNodeName(q)==L"VAR")
         {
-              text << L" ADD EAX,[" << GetElemName(q,1)<<"]"<< endl;
+              text << L" ADD EAX,[" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]"<< endl;
         }
         else
         {
@@ -336,7 +359,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         z = ElemPos(position, 1);
 
         if ( GetNodeName(z) == L"VAR" ) {
-            text << " lea eax, [" << GetElemName(z, 1) << "]" << std::endl;
+            text << " lea eax, [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << std::endl;
         } else {
             text << "TODO - ADDROF" << endl;
         }
@@ -351,7 +374,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         }
         else if (GetNodeName(q)==L"VAR")
         {
-              text << L" AND EAX,[" << GetElemName(q,1)<<"]"<< endl;
+              text << L" AND EAX,[" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]"<< endl;
         }
         else
         {
@@ -576,20 +599,20 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
 
         if ( GetNodeName(q) == L"INT" ) {
             // X >== const
-            text << " cmp [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+            text << " cmp [" << GetLocalVar(GetElemName(z, 1)).GetName() << "], dword " << GetElemName(q, 1) << endl;;
         } else if ( GetNodeName(q) == L"VAR" ) {
             // X >== var
-            text << " cmp [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+            text << " cmp [" << GetLocalVar( GetElemName( z , 1) ).GetName() << "], [" << GetLocalVar( GetElemName( q, 1  ) ).GetName() << "]" << endl;
         } else {
             // X >== expr
             Compile(q, data, bss, text);
-            text << " cmp [" << GetElemName(z, 1) << "], eax" << endl;
+            text << " cmp [" << GetLocalVar(GetElemName(z, 1)).GetName() << "], eax" << endl;
         }
 
-        text << " setge [" << GetElemName(z, 1) << "]" << endl;
+        text << " setge [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
 
         // rezultat izraza treba da bude vrijednost varijable
-        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
+        text << " mov eax, [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
     }
     else if (nodename== L"ISGREATERMOV") {
         // X => Y
@@ -602,20 +625,21 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
 
         if ( GetNodeName(q) == L"INT" ) {
             // X => const
-            text << " cmp [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+            text << " cmp [" << GetLocalVar( GetElemName( z, 1) ).GetName() << "], dword "
+                 << GetElemName(q, 1 ) << endl;;
         } else if ( GetNodeName(q) == L"VAR" ) {
             // X => var
-            text << " cmp [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+            text << " cmp [" << GetLocalVar( GetElemName( z , 1) ).GetName() << "], [" << GetLocalVar( GetElemName( q, 1  ) ).GetName() << "]" << endl;
         } else {
             // X => expr
             Compile(q, data, bss, text);
-            text << " cmp [" << GetElemName(z, 1) << "], eax" << endl;
+            text << " cmp [" << GetLocalVar( GetElemName( z, 1 ) ).GetName() << "], eax" << endl;
         }
 
-        text << " setg [" << GetElemName(z, 1) << "]" << endl;
+        text << " setg [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
 
         // rezultat izraza treba da bude vrijednost varijable
-        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
+        text << " mov eax, [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
     }
     else if (nodename== L"ISLESSEQUMOV") {
         // X <== Y
@@ -628,20 +652,21 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
 
         if ( GetNodeName(q) == L"INT" ) {
             // X <== const
-            text << " cmp [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+            text << " cmp [" << GetLocalVar( GetElemName( z, 1) ).GetName() << "], dword "
+                 << GetElemName(q, 1 ) << endl;;
         } else if ( GetNodeName(q) == L"VAR" ) {
             // X <== var
-            text << " cmp [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+            text << " cmp [" << GetLocalVar( GetElemName( z , 1) ).GetName() << "], [" << GetLocalVar( GetElemName( q, 1  ) ).GetName() << "]" << endl;
         } else {
             // X <== expr
             Compile(q, data, bss, text);
-            text << " cmp [" << GetElemName(z, 1) << "], eax" << endl;
+            text << " cmp [" << GetLocalVar( GetElemName( z, 1 ) ).GetName() << "], eax" << endl;
         }
 
-        text << " setle [" << GetElemName(z, 1) << "]" << endl;
+        text << " setle [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
 
         // rezultat izraza treba da bude vrijednost varijable
-        text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
+        text << " mov eax, [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
     }
     else if (nodename== L"ISLESSMOV") {
         // X =< Y
@@ -654,19 +679,20 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
 
         if ( GetNodeName(q) == L"INT" ) {
             // X =< const
-            text << " cmp [" << GetElemName(z, 1) << "], dword " << GetElemName(q, 1) << endl;;
+            text << " cmp [" << GetLocalVar( GetElemName( z, 1) ).GetName() << "], dword "
+                 << GetElemName(q, 1 ) << endl;;
         } else if ( GetNodeName(q) == L"VAR" ) {
             // X =< var
-            text << " cmp [" << GetElemName(z, 1) << "], [" << GetElemName(q, 1) << "]" << endl;
+            text << " cmp [" << GetLocalVar( GetElemName( z , 1) ).GetName() << "], [" << GetLocalVar( GetElemName( q, 1  ) ).GetName() << "]" << endl;
         } else {
             // X =< expr
             Compile(q, data, bss, text);
-            text << " cmp [" << GetElemName(z, 1) << "], eax" << endl;
+            text << " cmp [" << GetLocalVar( GetElemName( z, 1 ) ).GetName() << "], eax" << endl;
         }
 
         if ( GetNodeName(q) == L"VAR" ) {
-            text << " setl [" << GetElemName(z, 1) << "]" << endl;
-            text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
+            text << " setl [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
+            text << " mov eax, [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
         } else {
             text << " setl [ebx]" << endl;
             text << " mov eax, [ebx]" << endl;
@@ -712,7 +738,6 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
     }
     else if (nodename== L"LARRDEF") {
         elemname = GetElemName(position, 1);
-
         z = ElemPos(position, 2);
         auto arrSize = 0;
 
@@ -724,9 +749,10 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         ss << GetElemName(z, 1);
         ss >> arrSize;
 
-        FunctionLocals[CurrentFunction].push_back( LocalVariable(CurrentFunction, elemname, arrSize) );
+        auto var = LocalVariable(CurrentFunction, elemname, arrSize);
+        FunctionLocals[CurrentFunction].push_back( var );
 
-        text << " %define " << elemname
+        text << " %define " << var.GetName() << ""
              << " dword ebp - " << CalculateVarsSize(FunctionLocals[CurrentFunction]) << endl;
 
 
@@ -739,10 +765,11 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
     }
     else if (nodename== L"LVARDEF") {
         elemname = GetElemName(position, 1);
+        auto var = LocalVariable(CurrentFunction, elemname);
 
-        FunctionLocals[CurrentFunction].push_back( LocalVariable(CurrentFunction, elemname) );
+        FunctionLocals[CurrentFunction].push_back( var );
 
-        text << " %define " << elemname
+        text << " %define " << var.GetName() << ""
              << " dword ebp - " << CalculateVarsSize(FunctionLocals[CurrentFunction]) << endl;
 
 
@@ -769,18 +796,19 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         {
             if (GetNodeName(q)==L"INT")
             {
-              text << L" MOV DWORD [" << GetElemName(z,1)<<"],"<< GetElemName(q,1)<< endl ;
+              text << L" MOV DWORD [" << GetLocalVar( GetElemName( z, 1) ).GetName() <<"],"
+                   << GetElemName(q,1 ) << endl ;
             } else if (GetNodeName(q)==L"VAR")
             {
-              text << L" MOV EAX, [" << GetElemName(q,1)<<"]"<< endl;
-              text << L" MOV [" << GetElemName(z,1)<<"],EAX"<< endl;
+              text << L" MOV EAX, [" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]"<< endl;
+              text << L" MOV [" << GetLocalVar( GetElemName( z, 1 ) ).GetName() <<"],EAX"<< endl;
             } else if (GetNodeName(q) == L"ONUMBER") {
                 text << L" xor eax, eax" << std::endl;
-                text << L" mov [" << GetElemName(z,1)<<"], EAX"<< endl;
+                text << L" mov [" << GetLocalVar( GetElemName( z, 1 ) ).GetName() <<"], EAX"<< endl;
             } else
             {
               Compile(q, data, bss, text);;
-              text << L" MOV [" << GetElemName(z,1)<<"],EAX"<< endl;
+              text << L" MOV [" << GetLocalVar( GetElemName( z, 1 ) ).GetName() <<"],EAX"<< endl;
             }
         }
         else
@@ -794,7 +822,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
             if (GetNodeName(q)==L"VAR")
             {
               Compile(z, data, bss, text);;
-              text << L" MOV EAX, [" << GetElemName(q,1)<<"]"<< endl;
+              text << L" MOV EAX, [" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]"<< endl;
               text << L" MOV [EBX],EAX"<< endl;
             }
             else
@@ -820,7 +848,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         else
         if (GetNodeName(q)==L"VAR")
         {
-              text << L" MUL EAX,[" << GetElemName(q,1)<<"]"<< endl;
+              text << L" MUL EAX,[" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]"<< endl;
         }
         else
         {
@@ -852,7 +880,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         else
         if (GetNodeName(q)==L"VAR")
         {
-              text << L" OR EAX,[" << GetElemName(q,1)<<"]"<< endl;
+              text << L" OR EAX,[" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]"<< endl;
         }
         else
         {
@@ -871,7 +899,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         auto zType = GetNodeName(z);
 
         if ( zType == L"VAR" ) {
-            text << " lea ebx, [" << GetElemName(z, 1) << "]" << std::endl;
+            text << " lea ebx, [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << std::endl;
             text << " mov eax, [ebx]" << std::endl;
             text << " mov edx, eax" << std::endl;
 
@@ -894,7 +922,9 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         auto zType = GetNodeName(z);
 
         if ( zType == L"VAR" ) {
-            text << " lea ebx, [" << GetElemName(z, 1) << "]" << std::endl;
+            auto zVar = GetLocalVar(GetElemName(z, 1));
+
+            text << " lea ebx, [" << zVar.GetName() << "]" << std::endl;
             text << " mov eax, [ebx]" << std::endl;
 
             if ( nodename == L"PREDEC" ) {
@@ -903,7 +933,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
                 text << " inc eax" << std::endl;
             }
 
-            text << " mov [ebx] eax" << std::endl;
+            text << " mov [ebx], eax" << std::endl;
         } else {
             // izraz
             text << "todo postdec/postinc" << zType << std::endl;
@@ -922,7 +952,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         if ( GetNodeName(z) == L"INT" ) {
             text << L" mov eax, dword " << GetElemName(z, 1) << endl;
         } else if ( GetNodeName(z) == L"VAR" ) {
-            text << L" mov eax, dword [" << GetElemName(z, 1) << L"]" << endl;
+            text << L" mov eax, dword [" << GetLocalVar( GetElemName( z, 1 ) ).GetName() << L"]" << endl;
         } else {
             Compile(z, data, bss, text);
         }
@@ -955,7 +985,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         else
         if (GetNodeName(q)==L"VAR")
         {
-              text << L" SUB EAX,[" << GetElemName(q,1)<<"]"<< endl;
+              text << L" SUB EAX,[" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]"<< endl;
         }
         else
         {
@@ -980,7 +1010,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         if ( GetNodeName(z) == L"INT" ) {
             text << " mov eax, " << GetElemName(z, 1) << endl;
         } else if ( GetNodeName(z) == L"VAR" ) {
-            text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
+            text << " mov eax, [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
         } else {
             Compile(z, data, bss, text);
         }
@@ -995,7 +1025,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         if ( GetNodeName(z) == L"INT" ) {
             text << " mov eax, " << GetElemName(z, 1) << endl;
         } else if ( GetNodeName(z) == L"VAR" ) {
-            text << " mov eax, [" << GetElemName(z, 1) << "]" << endl;
+            text << " mov eax, [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
         } else {
             Compile(z, data, bss, text);
         }
@@ -1008,7 +1038,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         auto zType = GetNodeName(z);
 
         if ( zType == L"VAR" ) {
-            text << L" lea ebx, [" << GetElemName(z, 1) << std::endl
+            text << L" lea ebx, [" << GetLocalVar( GetElemName( z, 1 ) ).GetName() << std::endl
                  << L" mov eax, [ebx]" << std::endl
                  << L" neg eax" << std::endl
                  << L" mov [ebx], eax" << std::endl;
@@ -1033,7 +1063,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         else
         if (GetNodeName(q)==L"VAR")
         {
-              text << L" XOR EAX,[" << GetElemName(q,1)<<"]"<< endl;
+              text << L" XOR EAX,[" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]"<< endl;
         }
         else
         {

@@ -17,8 +17,8 @@ bmain() {
 */
     auto i 100;
 
-    while ( i > 0 ) {
-        // i --; <-- this shit crashes your shit.
+    while ( i > 25 ) {
+        -- i;
     }
 
     goto label;
