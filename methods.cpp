@@ -459,13 +459,13 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
     else if (nodename== L"DIVMOV") {
         OpMov(position, L"idiv", data, bss, text);
     }
-    else if (nodename== L"EQU") {
+    else if (nodename== L"EQU" || nodename == L"NEQU") {
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
         PrintCompare(z, q, text);
 
-        CmpToBool(L"je", text);
+        CmpToBool(nodename == L"EQU" ? L"je" : L"jne", text);
     }
     else if (nodename== L"EXTRN") {
         // todo
@@ -856,10 +856,6 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
     }
     else if (nodename== L"MULTMOV") {
         OpMov(position, L"imul", data, bss, text);
-    }
-    else if (nodename== L"NEQU") {
-        // todo
-        text<<"TODO - NEQU" << endl;
     }
     else if (nodename== L"ONUMBER") {
         // ONumbers should be handles everywhere where they could occur as an operand
