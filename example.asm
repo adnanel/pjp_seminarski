@@ -48,6 +48,8 @@ _tmp_label_1:
  mov [ebx], eax
  jmp _tmp_label_1
 _tmp_label_2:
+ mov eax, dword 53
+ MOV [_bmain_i],EAX
  jmp label_label
  mov eax, dword [a]
  jmp _bmain_end
@@ -169,6 +171,12 @@ _subr_end:
 ;							)
 ;						)
 ;					 )
+;				)
+;			 
+;				(MOV 
+;					(VAR i)
+;				
+;					(CHAR `'5'`)
 ;				)
 ;			 
 ;				(GOTO label)

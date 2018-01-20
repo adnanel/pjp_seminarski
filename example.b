@@ -21,6 +21,8 @@ bmain() {
         -- i;
     }
 
+    i = '5';
+
     goto label;
 
     return (a);

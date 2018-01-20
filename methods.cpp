@@ -1,4 +1,4 @@
-
+#include <cstdlib>
 
 // TODO - skoro svim dodjelama treba revidirati
 //        da li je ona var kojoj dodjeljujem fakat var?
@@ -413,8 +413,16 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         }
     }
     else if (nodename== L"CHAR") {
-        // todo
-        text<<"TODO - CHAR" << endl;
+        auto val = GetElemName(position, 1);
+
+        // val je karakter unutar `''` npr `'a'`
+        std::wstringstream ss;
+        ss << val[2];
+        wchar_t sc;
+        ss >> sc;
+
+        char ascii = static_cast<char>(sc);
+        text << " mov eax, dword " << static_cast<int>(ascii) << std::endl;
     }
     else if (nodename== L"CONDEXPR") {
         // todo
