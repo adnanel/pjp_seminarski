@@ -57,4 +57,6 @@ subr (c) {
   while ( c < a ) {
     c = c + 1;
   }
+
+  c = a < 1 ? fun() : 1 + 2;
 }

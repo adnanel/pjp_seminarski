@@ -424,10 +424,6 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         char ascii = static_cast<char>(sc);
         text << " mov eax, dword " << static_cast<int>(ascii) << std::endl;
     }
-    else if (nodename== L"CONDEXPR") {
-        // todo
-        text<<"TODO - CONDEXPR" << endl;
-    }
     else if (nodename== L"CONTINUE") {
         text << " jmp " << CurrentLoopStartLabel << std::endl;
     }
@@ -558,11 +554,11 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
 
         isInsideLoop = false;
     }
-    else if (nodename== L"IFELSE" || nodename == L"IF") {
+    else if ( nodename == L"IFELSE" || nodename == L"IF" || nodename == L"CONDEXPR" ) {
         int condblock = ElemPos(position, 1);
         int ifblock = ElemPos(position, 2);
         int elseblock = ElemPos(position, 3);
-        bool hasElse = nodename == L"IFELSE";
+        bool hasElse = nodename == L"IFELSE" || nodename == L"CONDEXPR";
 
         auto endiflabel = NextLabel();
         auto elselabel = hasElse ? NextLabel() : endiflabel;

@@ -130,6 +130,22 @@ _tmp_label_12:
  MOV [_subr_c],EAX
  jmp _tmp_label_12
 _tmp_label_13:
+ mov eax, [a]
+ cmp eax, dword 1
+ jl _tmp_label_18
+ mov eax, dword 0
+ jmp _tmp_label_19
+ _tmp_label_18:
+ mov eax, dword 1
+ _tmp_label_19:
+ jz _tmp_label_17
+ TODO - FUNC CALL 
+ jmp _tmp_label_16
+_tmp_label_17:
+ MOV EAX,1
+ ADD EAX,2
+_tmp_label_16:
+ MOV [_subr_c],EAX
 _subr_end:
  MOV ESP,EBP
  POP EBP
@@ -306,7 +322,29 @@ _subr_end:
 ;						 )
 ;					 )
 ;				 )
-;			)
+;			
+;				(MOV 
+;					(VAR c)
+;				
+;					(CONDEXPR 
+;						(LESSTHAN 
+;							(VAR a)
+;						
+;							(INT 1)
+;						)
+;					 
+;						(FUNCCALL 
+;							(VAR fun)
+;						)
+;					 
+;						(ADD 
+;							(INT 1)
+;						
+;							(INT 2)
+;						)
+;					 )
+;				 )
+;			 )
 ;		 )
 ;	 )
 ;
