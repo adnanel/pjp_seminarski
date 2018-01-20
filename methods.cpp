@@ -262,6 +262,7 @@ std::map< std::wstring, std::vector< LocalVariable > > FunctionLocals;
 std::wstring CurrentFunction;
 bool isInsideLoop = false;
 bool isInsideSwitch = false;
+bool isAssignableExpression = false;
 
 std::wstring CurrentLoopStartLabel;
 std::wstring CurrentLoopEndLabel;
@@ -285,7 +286,20 @@ LocalVariable GetLocalVar(const std::wstring& elemname, bool isArray = false, in
     return LocalVariable(isLocal ? CurrentFunction : L"", elemname);
 }
 
+/**
+ * Pomocna za CompMov instrukcije (IsGreaterEquMov, IsEquMov, ... )
+ */
+void PrintCompMov(int z, int q, const std::wstring& setInst, std::wstringstream& text) {
+    PrintCompare(z, q, text);
 
+    if ( GetNodeName(z) == L"VAR" ) {
+        text << " " << setInst << " eax" << std::endl;
+    } else if ( isAssignableExpression ) {
+        text << " " << setInst << " [eax]" << std::endl;
+    } else {
+        text << " todo CompMov ";
+    }
+}
 
 void PrintCompare(int z, int q, std::wstringstream& text) {
     auto zType = GetNodeName(z);
@@ -590,127 +604,43 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         text << L" MOV EAX,"<< GetElemName(position,1)<< endl ;
     }
     else if (nodename== L"ISEQUMOV") {
-        // todo OpMov
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        PrintCompMov(z, q, L"sete", text);
     }
     else if (nodename== L"ISGREATEREQUMOV") {
-        // X >== Y
-        // z je pozicija od X
-        // q je pozicija od Y
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        text << "; isgreaterequmov mov " << endl;
-
-        if ( GetNodeName(q) == L"INT" ) {
-            // X >== const
-            text << " cmp [" << GetLocalVar(GetElemName(z, 1)).GetName() << "], dword " << GetElemName(q, 1) << endl;;
-        } else if ( GetNodeName(q) == L"VAR" ) {
-            // X >== var
-            text << " cmp [" << GetLocalVar( GetElemName( z , 1) ).GetName() << "], [" << GetLocalVar( GetElemName( q, 1  ) ).GetName() << "]" << endl;
-        } else {
-            // X >== expr
-            Compile(q, data, bss, text);
-            text << " cmp [" << GetLocalVar(GetElemName(z, 1)).GetName() << "], eax" << endl;
-        }
-
-        text << " setge [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
-
-        // rezultat izraza treba da bude vrijednost varijable
-        text << " mov eax, [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
+        PrintCompMov(z, q, L"setge", text);
     }
     else if (nodename== L"ISGREATERMOV") {
-        // X => Y
-        // z je pozicija od X
-        // q je pozicija od Y
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        text << "; isgreatermov mov " << endl;
-
-        if ( GetNodeName(q) == L"INT" ) {
-            // X => const
-            text << " cmp [" << GetLocalVar( GetElemName( z, 1) ).GetName() << "], dword "
-                 << GetElemName(q, 1 ) << endl;;
-        } else if ( GetNodeName(q) == L"VAR" ) {
-            // X => var
-            text << " cmp [" << GetLocalVar( GetElemName( z , 1) ).GetName() << "], [" << GetLocalVar( GetElemName( q, 1  ) ).GetName() << "]" << endl;
-        } else {
-            // X => expr
-            Compile(q, data, bss, text);
-            text << " cmp [" << GetLocalVar( GetElemName( z, 1 ) ).GetName() << "], eax" << endl;
-        }
-
-        text << " setg [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
-
-        // rezultat izraza treba da bude vrijednost varijable
-        text << " mov eax, [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
+        PrintCompMov(z, q, L"setg", text);
     }
     else if (nodename== L"ISLESSEQUMOV") {
-        // X <== Y
-        // z je pozicija od X
-        // q je pozicija od Y
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        text << "; islessequmov mov " << endl;
-
-        if ( GetNodeName(q) == L"INT" ) {
-            // X <== const
-            text << " cmp [" << GetLocalVar( GetElemName( z, 1) ).GetName() << "], dword "
-                 << GetElemName(q, 1 ) << endl;;
-        } else if ( GetNodeName(q) == L"VAR" ) {
-            // X <== var
-            text << " cmp [" << GetLocalVar( GetElemName( z , 1) ).GetName() << "], [" << GetLocalVar( GetElemName( q, 1  ) ).GetName() << "]" << endl;
-        } else {
-            // X <== expr
-            Compile(q, data, bss, text);
-            text << " cmp [" << GetLocalVar( GetElemName( z, 1 ) ).GetName() << "], eax" << endl;
-        }
-
-        text << " setle [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
-
-        // rezultat izraza treba da bude vrijednost varijable
-        text << " mov eax, [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
+        PrintCompMov(z, q, L"setle", text);
     }
     else if (nodename== L"ISLESSMOV") {
-        // X =< Y
-        // z je pozicija od X
-        // q je pozicija od Y
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        text << "; islessmov mov " << endl;
-
-        if ( GetNodeName(q) == L"INT" ) {
-            // X =< const
-            text << " cmp [" << GetLocalVar( GetElemName( z, 1) ).GetName() << "], dword "
-                 << GetElemName(q, 1 ) << endl;;
-        } else if ( GetNodeName(q) == L"VAR" ) {
-            // X =< var
-            text << " cmp [" << GetLocalVar( GetElemName( z , 1) ).GetName() << "], [" << GetLocalVar( GetElemName( q, 1  ) ).GetName() << "]" << endl;
-        } else {
-            // X =< expr
-            Compile(q, data, bss, text);
-            text << " cmp [" << GetLocalVar( GetElemName( z, 1 ) ).GetName() << "], eax" << endl;
-        }
-
-        if ( GetNodeName(q) == L"VAR" ) {
-            text << " setl [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
-            text << " mov eax, [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
-        } else {
-            text << " setl [ebx]" << endl;
-            text << " mov eax, [ebx]" << endl;
-        }
-
-
+        PrintCompMov(z, q, L"setl", text);
     }
     else if (nodename== L"ISNEQUMOV") {
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        PrintCompare(z, q, text);
-
-        CmpToBool(L"jne", text);
+        PrintCompMov(z, q, L"setne", text);
     }
     else if (nodename== L"LABEL") {
         elemname = GetElemName(position, 1);
@@ -785,12 +715,74 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         }
     }
     else if (nodename== L"MOD") {
-        // todo
-        text<<"TODO - MOD" << endl;
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 1);
+
+        auto zType = GetNodeName(z);
+        auto qType = GetNodeName(q);
+
+
+        if ( zType == L"VAR" ) {
+            auto zName = GetElemName(z, 1);
+            text << " mov eax, [" << GetLocalVar(zName).GetName() << "]" << std::endl;
+        } else {
+            Compile(z, data, bss, text);
+        }
+
+        text << " push eax " << std::endl;
+
+        if ( qType == L"VAR" ) {
+            auto qName = GetElemName(q, 1);
+            text << " mov eax, [" << GetLocalVar(qName).GetName() << "]" << std::endl;
+        } else {
+            Compile(q, data, bss, text);
+        }
+
+        text << " pop ebx" << std::endl;
+        text << " cdq" << std::endl;
+        text << " idiv eax, ebx" << std::endl;
+        text << " mov eax, edx" << std::endl;
     }
     else if (nodename== L"MODMOV") {
-        // todo
-        text<<"TODO - MODMOV" << endl;
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 1);
+
+        auto zType = GetNodeName(z);
+        auto qType = GetNodeName(q);
+
+        if ( zType == L"VAR" ) {
+            auto zName = GetElemName(z, 1);
+            text << " mov eax, [" << GetLocalVar(zName).GetName() << "]" << std::endl;
+        } else {
+            Compile(z, data, bss, text);
+        }
+
+        text << " push eax " << std::endl;
+
+        if ( qType == L"VAR" ) {
+            auto qName = GetElemName(q, 1);
+            text << " mov eax, [" << GetLocalVar(qName).GetName() << "]" << std::endl;
+        } else {
+            Compile(q, data, bss, text);
+        }
+
+        text << " pop ebx" << std::endl;
+        if ( isAssignableExpression ) {
+            text << " push ebx" << std::endl;
+        }
+
+        text << " cdq" << std::endl;
+        text << " idiv eax, ebx" << std::endl;
+        text << " mov eax, edx" << std::endl;
+
+        text << " pop ebx";
+        if ( zType == L"VAR" ) {
+            text << " mov [" << GetLocalVar(GetElemName(z, 1)).GetName() << "], eax" << std::endl;
+        } else if ( isAssignableExpression ) {
+            text << " mov [ebx], eax" << std::endl;
+        } else {
+            text << " todo - divmov " << std::endl;
+        }
     }
     else if (nodename== L"MOV") {
         z=ElemPos(position, 1);
