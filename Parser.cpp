@@ -160,7 +160,24 @@ void Parser::B()
 	std::wcout << bss.str() << std::endl;
 	std::wcout << text.str() << std::endl;
 	#ifdef PRINT_PARSE_LIST
-	std::wcout << L";" << ParseList << std::endl;
+	std::wcout << L";";
+	int tabCnt = 0;
+	for ( auto c : ParseList ) {
+	if ( c == '(' ) {
+	std::wcout << std::endl << L";";    
+	++tabCnt;
+	for ( int i = 0; i < tabCnt; ++ i ) std::wcout << "\t";
+	std::wcout << c;
+	} else if ( c == ')' ) {
+	std::wcout << c;
+	std::wcout << std::endl << L";";    
+	--tabCnt;
+	for ( int i = 0; i < tabCnt; ++ i ) std::wcout << "\t";
+	} else
+	std::wcout << c;    
+
+
+	}
 	#endif
 }
 
@@ -464,6 +481,7 @@ void Parser::StatementExpression()
 void Parser::BreakStatement()
 {
 	Expect(16);
+
 	ParseList.append(L"(BREAK) ");
 	ExpectWeak(11, 6);
 }

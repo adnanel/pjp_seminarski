@@ -63,7 +63,24 @@ EOF                              (. ParseList+=L")"; .)
                                  (. std::wcout << text.str() << std::endl; .)
 
                                  (. #ifdef PRINT_PARSE_LIST .)
-                                 (.     std::wcout << L";" << ParseList << std::endl; .)
+                                 (. std::wcout << L";"; .)
+                                 (. int tabCnt = 0; .)
+                                 (. for ( auto c : ParseList ) { .)
+                                 (.     if ( c == '(' ) { .)
+                                 (.         std::wcout << std::endl << L";";     .)
+                                 (.         ++tabCnt; .)
+                                 (.         for ( int i = 0; i < tabCnt; ++ i ) std::wcout << "\t"; .)
+                                 (.         std::wcout << c; .)
+                                 (.     } else if ( c == ')' ) { .)
+                                 (.         std::wcout << c; .)
+                                 (.         std::wcout << std::endl << L";";     .)
+                                 (.         --tabCnt; .)
+                                 (.         for ( int i = 0; i < tabCnt; ++ i ) std::wcout << "\t"; .)
+                                 (.     } else .)
+                                 (.         std::wcout << c;     .)
+                                 (.  .)
+                                 (.  .)
+                                 (. } .)
                                  (. #endif .)
 
 
@@ -183,7 +200,8 @@ Initializator                    (. ParseList.insert(position,L"(INIT " ); Parse
     WEAK ';' .
 
   BreakStatement
-  = "break"                      (. ParseList.append(L"(BREAK) "); .)
+  = "break"                      (. /* todo - if ( !isInsideLoop && !isInsideSwitch ) SemError(L"Nothing to break out from"); */ .)
+                                 (. ParseList.append(L"(BREAK) "); .)
     WEAK ';'
 .
 
