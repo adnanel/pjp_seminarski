@@ -154,6 +154,9 @@ void Parser::B()
 	bss << L"segment .bss;" << std::endl << std::endl;
 	std::wstringstream text;
 	text << L"segment .text;" << std::endl << std::endl;
+	text << L"; Built-in functions" << std::endl;
+	text << L"extern  _scanf, _printf, _getchar, _putchar, _fputs" << std::endl;
+	text << L"" << std::endl;
 	Compile(0, data, bss, text);
 	std::wcout << L"%include \"asm_io.inc\"" << std::endl;
 	std::wcout << data.str() << std::endl;
@@ -406,7 +409,13 @@ void Parser::Label()
 		ParseList.append(L"(DEFAULT) ");
 	} else if (la->kind == 2) {
 		GotoLabel(name);
-		ParseList.append(L"(LABEL ");ParseList.append(name); ;ParseList.append(L" )");
+		if(std::wstring(name) == L"default") {
+		ParseList.append(L"(DEFAULT) ");
+		}  else { 
+		ParseList.append(L"(LABEL ");
+		ParseList.append(name); 
+		ParseList.append(L" )");
+		}
 	} else SynErr(73);
 }
 
@@ -433,13 +442,17 @@ void Parser::AutoDeclaration()
 	isarray=false;position=ParseList.length();
 	Ident(name);
 	ParseList.append(name);ParseList.append(L" ");
-	if (la->kind == 3 || la->kind == 8) {
+	if (la->kind == 3 || la->kind == 4 || la->kind == 8) {
 		if (la->kind == 8) {
 			Get();
 			Expect(3);
 			isarray=true; ParseList.append(L"(ASIZE ");
 			ParseList.append(t->val);ParseList.append(L")") ;
 			Expect(9);
+		} else if (la->kind == 3) {
+			Get();
+			ParseList.append(L"(INIT ");
+			ParseList.append(t->val);ParseList.append(L")") ;
 		} else {
 			Get();
 			ParseList.append(L"(INIT ");

@@ -5,6 +5,7 @@
 //        ako nije var onda je izraz, tj *a
 //        onda treba upisati u [ebx]
 
+
 bool Assignable(int position) {
     std::wstring name = GetNodeName(position);
 
@@ -86,11 +87,19 @@ std::wstring GetElemName (int position, int elemnum)
     wstring ElemName;
     position=ElemPos(position,elemnum);
     ElemName=L"";
+    bool escaped = false;
     if (position>0)
-      while (ParseList[position] !=' ' && ParseList[position] !=')' )
+      if ( ParseList[position] == '`' ) {
+          escaped = !escaped;
+      }
+
+      while (escaped || (ParseList[position] !=' ' && ParseList[position] !=')') )
       { 
           ElemName+=ParseList[position];
           position++;
+          if ( ParseList[position] == '`' ) {
+              escaped = !escaped;
+          }
       }
     return ElemName;
 }
@@ -168,6 +177,46 @@ void CmpToBool(const std::wstring& jinstr, std::wstringstream& text) {
          << L" " << one << L":" << std::endl;
 }
 
+/**
+ * Za generisanje binarnih operacija +,-,*...
+ */
+void BinaryOp(int position, std::wstring opInst,
+              std::wstringstream& data, std::wstringstream& bss, std::wstringstream& text) {
+    auto z = ElemPos(position,1);
+    auto q = ElemPos(position,2);
+
+    if ( opInst == L"MUL" ) {
+        opInst = L"imul";
+    } else if ( opInst == L"DIV" ) {
+        opInst = L"idiv";
+    }
+
+    Compile(z, data, bss, text);;
+    if (GetNodeName(q)==L"INT")
+    {
+        if ( opInst == L"idiv" ) {
+            text << L" cdq" << std::endl;
+        }
+        text << L" " << opInst << L" "<< GetElemName(q,1)<< endl ;
+    } else if (GetNodeName(q)==L"VAR")
+    {
+        if ( opInst == L"idiv" ) {
+            text << L" cdq" << std::endl;
+        }
+        text << L" " << opInst << L" dword [" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]"<< endl;
+    } else
+    {
+        text << L" PUSH eax" << std::endl;
+        Compile(q, data, bss, text);;
+        text << L" mov ebx, eax" << std::endl;
+        text << L" POP eax" << std::endl;
+        if ( opInst == L"idiv" ) {
+            text << L" cdq" << std::endl;
+        }
+        text << L" " << opInst << L" EBX"<< endl;
+    }
+}
+
 
 /**
  * Za generisanje addmov/divmov/submov/etc
@@ -188,22 +237,42 @@ void OpMov(int position, const std::wstring& opInstr,
 
         if (GetNodeName(q) == L"INT") {
             // X op const
-            text << L" " << opInstr << L" eax, dword " << GetElemName(q, 1) << endl;;
+            if ( opInstr == L"idiv" ) {
+                text << L" cdq" << std::endl;
+                text << " mov eax, dword " << GetElemName(q, 1) << endl;
+                text << L" " << opInstr << L" eax" << endl;
+            } else {
+                text << L" " << opInstr << L" eax, dword " << GetElemName(q, 1) << endl;
+            }
         } else if (GetNodeName(q) == L"VAR") {
             // X op var
-            text << L" " << opInstr << L" eax, [" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]" << endl;
+            if ( opInstr == L"idiv" ) {
+                text << L" cdq" << std::endl;
+                text << L" " << opInstr << L" [" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]" << endl;
+            } else {
+                text << L" " << opInstr << L" eax, [" << GetLocalVar(GetElemName(q, 1)).GetName() << "]" << endl;
+            }
         } else {
             // X op expr
             text << L" push eax" << std::endl;
             Compile(q, data, bss, text);
             text << L" pop ebx" << std::endl;
-            text << L" " << opInstr << L" ebx, eax" << endl
-                 << L" mov eax, ebx" << std::endl;
+            if ( opInstr == L"idiv" ) {
+                text << L" cdq" << std::endl;
+                text << " mov ecx, ebx" << std::endl;
+                text << " mov ebx, eax" << std::endl;
+                text << " mov eax, ecx" << std::endl;
+
+                text << L" " << opInstr << L" eax" << endl;
+            } else {
+                text << L" " << opInstr << L" ebx, eax" << endl
+                     << L" mov eax, ebx" << std::endl;
+            }
         }
 
         // rezultat izraza treba da bude vrijednost varijable
         text << L" pop ebx" << std::endl;
-        text << L" mov [ebx], eax" << std::endl;
+        text << L" mov [ebx], eax" << std::endl << "; end of opmov" << std::endl;
     } else {
         text << L" todo op mov " << std::endl;
     }
@@ -247,7 +316,6 @@ struct LocalVariable {
     }
 };
 
-
 int CalculateVarsSize(const std::vector<LocalVariable>& vars) {
     int total = 0;
     for ( const auto& n : vars ) {
@@ -256,19 +324,26 @@ int CalculateVarsSize(const std::vector<LocalVariable>& vars) {
     return total;
 }
 
-std::map< std::wstring, std::vector< std::wstring > > FunctionParameters;
+std::map< std::wstring, std::vector< std::wstring > > FunctionExterns;
+std::map< std::wstring, std::vector< LocalVariable > > FunctionParameters;
 std::map< std::wstring, std::vector< LocalVariable > > FunctionLocals;
 
+std::vector<std::wstring> SwitchLabels;
+
 std::wstring CurrentFunction;
-bool isInsideLoop = false;
-bool isInsideSwitch = false;
-bool isAssignableExpression = false;
+unsigned int CurrentLoop = 0;
+unsigned int CurrentSwitch = 0;
+int isAssignableExpression = 0;
 
-std::wstring CurrentLoopStartLabel;
-std::wstring CurrentLoopEndLabel;
+int CurrentArgCounter = 0;
 
-std::wstring CurrentSwitchStartLabel;
-std::wstring CurrentSwitchEndLabel;
+std::wstring CurrentLoopStartLabel[256];
+std::wstring CurrentLoopEndLabel[256];
+
+std::wstring CurrentSwitchEndLabel[256];
+std::wstring CurrentSwitchDefaultLabel[256];
+std::wstring CurrentSwitchCaseLabel[256];
+std::wstring PendingSwitchCaseLabel[256];
 
 
 LocalVariable GetLocalVar(const std::wstring& elemname, bool isArray = false, int arrLen = 1) {
@@ -280,20 +355,60 @@ LocalVariable GetLocalVar(const std::wstring& elemname, bool isArray = false, in
         }
     }
 
+    for ( const auto& n : FunctionParameters[CurrentFunction] ) {
+        if ( n.name == elemname ) {
+            isLocal = true;
+            break;
+        }
+    }
+
+    const auto& vec = FunctionExterns[CurrentFunction];
+    bool found = false;
+    for ( const auto& str : vec ) {
+        if ( str != elemname ) {
+            continue;
+        }
+
+        found = true;
+        break;
+    }
+
+    if ( !isLocal && !found ) {
+        SemErr(L"Global var not declared extern");
+    }
+
     if ( isArray ) {
         return LocalVariable(isLocal ? CurrentFunction : L"", elemname, arrLen);
     }
     return LocalVariable(isLocal ? CurrentFunction : L"", elemname);
 }
 
+
+void PrintShift(int z, int q, const std::wstring& setInst, std::wstringstream& data,
+        std::wstringstream& bss, std::wstringstream& text) {
+    Compile(z, data, bss, text);
+    text << " push eax" << std::endl;
+
+    if ( GetNodeName(q) == L"INT" ) {
+        text << " " << setInst << " eax, byte " << GetElemName(q, 1) << std::endl;
+    } else {
+        SemErr(L"Shifting requires a constant shift count");
+    }
+    Compile(q, data, bss, text);
+    text << " pop ebx" << std::endl;
+}
+
+
 /**
  * Pomocna za CompMov instrukcije (IsGreaterEquMov, IsEquMov, ... )
  */
-void PrintCompMov(int z, int q, const std::wstring& setInst, std::wstringstream& text) {
-    PrintCompare(z, q, text);
+void PrintCompMov(int z, int q, const std::wstring& setInst, std::wstringstream& data,
+                  std::wstringstream& bss, std::wstringstream& text) {
+    PrintCompare(z, q, data, bss, text);
 
     if ( GetNodeName(z) == L"VAR" ) {
-        text << " " << setInst << " eax" << std::endl;
+        text << " lea ebx, [" << GetLocalVar(GetElemName(z, 1)).GetName() << "]" << std::endl;
+        text << " " << setInst << " [ebx]" << std::endl;
     } else if ( isAssignableExpression ) {
         text << " " << setInst << " [eax]" << std::endl;
     } else {
@@ -301,17 +416,16 @@ void PrintCompMov(int z, int q, const std::wstring& setInst, std::wstringstream&
     }
 }
 
-void PrintCompare(int z, int q, std::wstringstream& text) {
+void PrintCompare(int z, int q, std::wstringstream& data, std::wstringstream& bss, std::wstringstream& text) {
     auto zType = GetNodeName(z);
     auto qType = GetNodeName(q);
 
-    text << L" mov eax, ";
     if ( zType == L"VAR" ) {
-        text << L"[" << GetLocalVar( GetElemName(z, 1) ).GetName() << L"]" << std::endl;
+        text << L" mov eax, [" << GetLocalVar( GetElemName(z, 1) ).GetName() << L"]" << std::endl;
     } else if ( zType == L"INT" ) {
-        text << L"dword " << GetElemName(z, 1) << std::endl;
+        text << L" mov eax, dword " << GetElemName(z, 1) << std::endl;
     } else {
-        text << L"TODO PrintCompare zType - " << zType << std::endl;
+        Compile(z, data, bss, text);
     }
 
     text << L" cmp eax, ";
@@ -345,13 +459,14 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
     int par,z,q;
     nodename=GetNodeName(position);
     par=1;
+
     if (nodename== L"ADD") {
         z=ElemPos(position,1);
         q=ElemPos(position,2);
         Compile(z, data, bss, text);;
         if (GetNodeName(q)==L"INT")
         {
-              text << L" ADD EAX,"<< GetElemName(q,1)<< endl ;
+              text << L" ADD EAX, dword "<< GetElemName(q,1)<< endl ;
         }
         else
         if (GetNodeName(q)==L"VAR")
@@ -360,9 +475,9 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         }
         else
         {
-            text << L" PUSH EAX";
+            text << L" PUSH EAX" << std::endl;
             Compile(q, data, bss, text);;
-            text << L" POP EBX";
+            text << L" POP EBX" << std::endl;
             text << L" ADD EAX,EBX"<< endl;
         }
     }
@@ -378,35 +493,21 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
             text << "TODO - ADDROF" << endl;
         }
     }
-    else if (nodename== L"AND") {
-        z=ElemPos(position,1);
-        q=ElemPos(position,2);
-        Compile(z, data, bss, text);;
-        if (GetNodeName(q)==L"INT")
-        {
-              text << L" AND EAX,"<< GetElemName(q,1)<< endl ;
-        }
-        else if (GetNodeName(q)==L"VAR")
-        {
-              text << L" AND EAX,[" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]"<< endl;
-        }
-        else
-        {
-            text << L" PUSH EAX";
-            Compile(q, data, bss, text);;
-            text << L" POP EBX";
-            text << L" AND EAX,EBX"<< endl;
-        }
-    }
     else if (nodename== L"ANDMOV") {
         OpMov(position, L"and", data, bss, text);
     }
     else if (nodename== L"ARG") {
-        // todo
-        text<<"TODO - ARG" << endl;
+        z = ElemPos(position, 1);
+
+        auto zType = GetNodeName(z);
+
+        Compile(z, data, bss, text);
+        text << " mov [esp + " << CurrentArgCounter << "], eax " << std::endl;
+        CurrentArgCounter += 4;
+
     }
     else if (nodename== L"ASIZE") {
-        // todo
+        // ASIZE should be handled in GARRDEF and ARRDEF
         text<<"TODO - ASIZE" << endl;
     }
     else if (nodename== L"BLOCK") {
@@ -417,7 +518,9 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         }
     }
     else if (nodename== L"BREAK") {
-        text << " jmp " << (isInsideLoop ? CurrentLoopEndLabel : CurrentSwitchEndLabel);
+        text << " jmp "
+             << (CurrentLoop ? CurrentLoopEndLabel[CurrentLoop]  : CurrentSwitchEndLabel[CurrentSwitch] )
+             << std::endl;
     }
     else if (nodename== L"B" ) {
         while ((z=ElemPos(position,par)) >0)
@@ -439,7 +542,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         text << " mov eax, dword " << static_cast<int>(ascii) << std::endl;
     }
     else if (nodename== L"CONTINUE") {
-        text << " jmp " << CurrentLoopStartLabel << std::endl;
+        text << " jmp " << CurrentLoopStartLabel[CurrentLoop]  << std::endl;
     }
     else if (nodename== L"DECLSTAT") {
         while ((z=ElemPos(position,par)) >0)
@@ -448,14 +551,6 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
           par++;
         }
     }
-    else if (nodename== L"DEFAULT") {
-        // todo
-        text<<"TODO - DEFAULT" << endl;
-    }
-    else if (nodename== L"DIV") {
-        // todo
-        text<<"TODO - DIV" << endl;
-    }
     else if (nodename== L"DIVMOV") {
         OpMov(position, L"idiv", data, bss, text);
     }
@@ -463,19 +558,21 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        PrintCompare(z, q, text);
+        PrintCompare(z, q, data, bss, text);
 
         CmpToBool(nodename == L"EQU" ? L"je" : L"jne", text);
     }
     else if (nodename== L"EXTRN") {
-        // todo
-        // text<<"TODO - EXTRN" << endl;
+        FunctionExterns[CurrentFunction].push_back( GetElemName(position, 1) );
     }
     else if (nodename== L"FHEADER") {
         elemname = GetElemName(position, 1);
 
+        CurrentArgCounter = 0;
         while ((z=ElemPos(position,par)) >0)
         {
+            ++CurrentArgCounter;
+
             Compile(z, data, bss, text);;
             par++;
         }
@@ -483,15 +580,31 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
     else if (nodename== L"FPARAM") {
         elemname = GetElemName(position, 1);
 
-        FunctionParameters[CurrentFunction].push_back(elemname);
+        FunctionParameters[CurrentFunction].push_back(LocalVariable(CurrentFunction, elemname));
 
-        text << " %define " << elemname << " ebp + "
-             << (4 + FunctionParameters[CurrentFunction].size() * 4) << endl;
+        text << " %define " << GetLocalVar(elemname).GetName() << " ebp+"
+             << (4 + (FunctionParameters[CurrentFunction].size() * 4)) << endl;
 
     }
     else if (nodename== L"FUNCCALL") {
-        //todo
-        text << L" TODO - FUNC CALL " << endl;
+        int n = 2;
+        z = ElemPos(position, n++);
+
+        auto tmp = NextLabel();
+        text << " sub esp, dword " << tmp << std::endl;
+        CurrentArgCounter = 0;
+        while ( GetNodeName(z) == L"ARG" ) {
+            Compile(z, data, bss, text);
+            z = ElemPos(position, n++);
+        }
+        text << " " << tmp << " equ " << CurrentArgCounter << std::endl;
+
+        z = ElemPos(position, 1);
+        if ( GetNodeName(z) == L"VAR" ) {
+            text << " call _" << GetElemName(z, 1) << std::endl;
+        } else {
+            text << " calling something else than VAR? " << GetNodeName(z) << std::endl;
+        }
     }
     else if (nodename== L"FUNCDEF") {
         elemname = L"_" + GetElemName(position,1);
@@ -511,14 +624,25 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
 
         text << L" MOV ESP,EBP" << endl
              << L" POP EBP" << endl
-             << L" RET " << endl;
+             << L" RET " << (FunctionParameters[CurrentFunction].size() * 4) << endl;
 
         // add param length data entry
-        data << elemname << "_len db " << (CalculateVarsSize(FunctionLocals[CurrentFunction])) << endl;
+        data << elemname << "_len EQU " << (CalculateVarsSize(FunctionLocals[CurrentFunction])) << endl;
     }
     else if (nodename== L"GARRDEF") {
-        // todo
-        text<<"TODO - GARRDEF" << endl;
+        elemname = GetElemName(position, 1);
+
+        auto arrSize = ElemPos(position, 2);
+        if ( GetNodeName(arrSize) != L"ASIZE" ) {
+            text << " todo - asize isnt here?" << GetNodeName(arrSize) << std::endl;
+        }
+
+        int arrLen = 0;
+        std::wstringstream ss;
+        ss << GetElemName(arrSize, 1);
+        ss >> arrLen;
+
+        bss << elemname << " resd " << (arrLen * 4) << std::endl;
     }
     else if (nodename== L"GOTO") {
         elemname = GetElemName(position, 1);
@@ -529,7 +653,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        PrintCompare(z, q, text);
+        PrintCompare(z, q, data, bss, text);
 
         CmpToBool(L"jge", text);
     }
@@ -537,36 +661,36 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        PrintCompare(z, q, text);
+        PrintCompare(z, q, data, bss, text);
 
         CmpToBool(L"jg", text);
     }
     else if (nodename== L"GVARDEF") {
         elemname = GetElemName(position, 1);
 
-        bss << elemname << " resd 1" << endl;
+        bss << elemname << " resd 4" << endl;
     }
     else if (nodename== L"WHILE") {
-        isInsideLoop = true;
+        CurrentLoop ++;
 
         int condblock = ElemPos(position, 1);
         int bodyBlock = ElemPos(position, 2);
 
-        CurrentLoopStartLabel = NextLabel();
-        CurrentLoopEndLabel = NextLabel();
+        CurrentLoopStartLabel[CurrentLoop]  = NextLabel();
+        CurrentLoopEndLabel[CurrentLoop]  = NextLabel();
 
-        text << CurrentLoopStartLabel << L":" << std::endl;
+        text << CurrentLoopStartLabel[CurrentLoop]  << L":" << std::endl;
         Compile(condblock, data, bss, text);
 
-        text << " jz " << CurrentLoopEndLabel << std::endl;
+        text << " jz " << CurrentLoopEndLabel[CurrentLoop]  << std::endl;
 
         Compile(bodyBlock, data, bss, text);
 
-        text << L" jmp " << CurrentLoopStartLabel << std::endl;
+        text << L" jmp " << CurrentLoopStartLabel[CurrentLoop]  << std::endl;
 
-        text << CurrentLoopEndLabel << ":" << std::endl;
+        text << CurrentLoopEndLabel[CurrentLoop]  << ":" << std::endl;
 
-        isInsideLoop = false;
+        CurrentLoop --;
     }
     else if ( nodename == L"IFELSE" || nodename == L"IF" || nodename == L"CONDEXPR" ) {
         int condblock = ElemPos(position, 1);
@@ -593,15 +717,46 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         text << endiflabel << ":" << std::endl;
     }
     else if (nodename== L"INDEX") {
-        // todo
-        text<<"TODO - INDEX" << endl;
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+
+        auto zType = GetNodeName(z);
+        auto qType = GetNodeName(q);
+
+        if ( zType == L"VAR" ) {
+            text << " lea eax, [" << GetLocalVar( GetElemName(z, 1) ).GetName() << "]" << std::endl;
+        } else {
+            Compile(z, data, bss, text);
+        }
+
+        if ( qType == L"INT" || qType == L"ONUMBER" ) {
+            text << " push eax" << std::endl;
+            text << " mov eax, dword " << GetElemName(q, 1) << std::endl;
+            text << " sal eax, 2" << std::endl;
+            text << " pop ebx" << std::endl;
+            text << " add eax, ebx" << std::endl;
+        } else {
+            text << " push eax" << std::endl;
+
+            Compile(q, data, bss, text);
+
+            text << " sal eax, 2" << std::endl;
+
+            text << " mov ebx, eax" << std::endl;
+            text << " pop eax" << std::endl;
+
+            text << " add eax, ebx" <<std::endl;
+        }
+
+        text << " mov ebx, eax" << std::endl;
+        text << " mov eax, [eax]" << std::endl;
     }
     else if (nodename== L"INIT") {
-        // Init should be handled by the outer node
-        text<<"TODO - INIT" << endl;
+        text << " todo - init " << std::endl;
+        text << " mov eax, dword " << GetElemName(position, 1) << std::endl;
     }
     else if (nodename== L"INT") {
-        text << L" MOV EAX,"<< GetElemName(position,1)<< endl ;
+        text << L" MOV EAX, dword "<< GetElemName(position,1) << std::endl;
     }
     else if (nodename== L"ISEQUMOV") {
         z = ElemPos(position, 1);
@@ -610,37 +765,37 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        PrintCompMov(z, q, L"sete", text);
+        PrintCompMov(z, q, L"sete", data, bss, text);
     }
     else if (nodename== L"ISGREATEREQUMOV") {
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        PrintCompMov(z, q, L"setge", text);
+        PrintCompMov(z, q, L"setge", data, bss, text);
     }
     else if (nodename== L"ISGREATERMOV") {
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        PrintCompMov(z, q, L"setg", text);
+        PrintCompMov(z, q, L"setg", data, bss, text);
     }
     else if (nodename== L"ISLESSEQUMOV") {
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        PrintCompMov(z, q, L"setle", text);
+        PrintCompMov(z, q, L"setle", data, bss, text);
     }
     else if (nodename== L"ISLESSMOV") {
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        PrintCompMov(z, q, L"setl", text);
+        PrintCompMov(z, q, L"setl", data, bss, text);
     }
     else if (nodename== L"ISNEQUMOV") {
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        PrintCompMov(z, q, L"setne", text);
+        PrintCompMov(z, q, L"setne", data, bss, text);
     }
     else if (nodename== L"LABEL") {
         elemname = GetElemName(position, 1);
@@ -651,7 +806,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        PrintCompare(z, q, text);
+        PrintCompare(z, q, data, bss, text);
 
         CmpToBool(L"jle", text);
     }
@@ -659,13 +814,9 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         z = ElemPos(position, 1);
         q = ElemPos(position, 2);
 
-        PrintCompare(z, q, text);
+        PrintCompare(z, q, data, bss, text);
 
         CmpToBool(L"jl", text);
-    }
-    else if (nodename== L"LSHIFT") {
-        // todo
-        text<<"TODO - LSHIFT" << endl;
     }
     else if (nodename== L"LSHIFTMOV") {
         OpMov(position, L"shl", data, bss, text);
@@ -684,10 +835,12 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         ss >> arrSize;
 
         auto var = LocalVariable(CurrentFunction, elemname, arrSize);
+
         FunctionLocals[CurrentFunction].push_back( var );
 
         text << " %define " << var.GetName() << ""
-             << " dword ebp - " << CalculateVarsSize(FunctionLocals[CurrentFunction]) << endl;
+             << " ebp-" << CalculateVarsSize(FunctionLocals[CurrentFunction]) << endl;
+
 
 
         z = ElemPos(position, 2);
@@ -702,9 +855,8 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         auto var = LocalVariable(CurrentFunction, elemname);
 
         FunctionLocals[CurrentFunction].push_back( var );
-
         text << " %define " << var.GetName() << ""
-             << " dword ebp - " << CalculateVarsSize(FunctionLocals[CurrentFunction]) << endl;
+             << " ebp-" << CalculateVarsSize(FunctionLocals[CurrentFunction]) << endl;
 
 
         z = ElemPos(position, 2);
@@ -775,7 +927,7 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         text << " idiv eax, ebx" << std::endl;
         text << " mov eax, edx" << std::endl;
 
-        text << " pop ebx";
+        text << " pop ebx" << std::endl;
         if ( zType == L"VAR" ) {
             text << " mov [" << GetLocalVar(GetElemName(z, 1)).GetName() << "], eax" << std::endl;
         } else if ( isAssignableExpression ) {
@@ -811,76 +963,38 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         {
             if (GetNodeName(q)==L"INT")
             {
-              Compile(z, data, bss, text);;
-              text << L" MOV DWORD [EBX],"<< GetElemName(q,1)<< endl ;
+              Compile(z, data, bss, text);
+              text << L" MOV DWORD [EBX],"<< GetElemName(q,1) << std::endl;
             }
             else
             if (GetNodeName(q)==L"VAR")
             {
-              Compile(z, data, bss, text);;
+              Compile(z, data, bss, text);
               text << L" MOV EAX, [" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]"<< endl;
               text << L" MOV [EBX],EAX"<< endl;
             }
             else
             {
-              Compile(q, data, bss, text);;
-              text << L" PUSH EAX"<< endl;
-              Compile(z, data, bss, text);;
-              text << L" POP EAX"<< endl;
-              text << L" MOV [EBX],EAX"<< endl;
+              Compile(q, data, bss, text);
+              text << L" PUSH EAX       ; push expr result"<< endl;
+              Compile(z, data, bss, text);
+              text << L" POP EAX        ; pop expr result "<< endl;
+              text << L" MOV [EBX], EAX"<< endl;
             }
 
 
         }
     }
-    else if (nodename== L"MUL") {
-        z=ElemPos(position,1);
-        q=ElemPos(position,2);
-        Compile(z, data, bss, text);;
-        if (GetNodeName(q)==L"INT")
-        {
-              text << L" MUL EAX,"<< GetElemName(q,1)<< endl ;
-        }
-        else
-        if (GetNodeName(q)==L"VAR")
-        {
-              text << L" MUL EAX,[" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]"<< endl;
-        }
-        else
-        {
-            text << L" PUSH EAX";
-            Compile(q, data, bss, text);;
-            text << L" POP EBX";
-            text << L" MUL EAX,EBX"<< endl;
-        }
+    else if (nodename== L"MUL" || nodename == L"SUB" || nodename == L"DIV"
+            || nodename == L"ADD" || nodename == L"OR" || nodename == L"XOR"
+            || nodename == L"AND") {
+        BinaryOp(position, nodename, data, bss, text);
     }
     else if (nodename== L"MULTMOV") {
         OpMov(position, L"imul", data, bss, text);
     }
     else if (nodename== L"ONUMBER") {
-        // ONumbers should be handles everywhere where they could occur as an operand
-        SemErr(L"Unhandled zero");
-    }
-    else if (nodename== L"OR") {
-        z=ElemPos(position,1);
-        q=ElemPos(position,2);
-        Compile(z, data, bss, text);;
-        if (GetNodeName(q)==L"INT")
-        {
-              text << L" OR EAX,"<< GetElemName(q,1)<< endl ;
-        }
-        else
-        if (GetNodeName(q)==L"VAR")
-        {
-              text << L" OR EAX,[" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]"<< endl;
-        }
-        else
-        {
-            text << L" PUSH EAX";
-            Compile(q, data, bss, text);;
-            text << L" POP EBX";
-            text << L" OR EAX,EBX"<< endl;
-        }
+        text << " mov eax, dword 0; maybe this could've been optimized? onumber" << std::endl;
     }
     else if (nodename== L"ORMOV") {
         OpMov(position, L"or", data, bss, text);
@@ -932,8 +1046,13 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         }
     }
     else if (nodename== L"PTR") {
-        // todo
-        text<<"TODO - PTR" << endl;
+        z = ElemPos(position, 1);
+
+        auto zType = GetNodeName(position);
+
+        Compile(z, data, bss, text);
+
+        text << " mov eax, [eax]" << std::endl;
     }
     else if (nodename== L"RETURN") {
         text << " jmp " << CurrentFunction << "_end" << endl;
@@ -951,9 +1070,15 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
 
         text << " jmp " << CurrentFunction << "_end" << endl;
     }
+    else if (nodename== L"LSHIFT") {
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+        PrintShift(z, q, L"shl", data, bss, text);
+    }
     else if (nodename== L"RSHIFT") {
-        // todo
-        text<<"TODO - RSHIFT" << endl;
+        z = ElemPos(position, 1);
+        q = ElemPos(position, 2);
+        PrintShift(z, q, L"shr", data, bss, text);
     }
     else if (nodename== L"RSHIFTMOV") {
         OpMov(position, L"shr", data, bss, text);
@@ -963,107 +1088,129 @@ void Compile(int position, std::wstringstream& data, std::wstringstream& bss, st
         text<<"TODO - SAMEAS" << endl;
     }
     else if (nodename== L"STRING") {
-        // todo
-        text<<"TODO - STRING" << endl;
-    }
-    else if (nodename== L"SUB") {
-        z=ElemPos(position,1);
-        q=ElemPos(position,2);
-        Compile(z, data, bss, text);;
-        if (GetNodeName(q)==L"INT")
-        {
-              text << L" SUB EAX,"<< GetElemName(q,1)<< endl ;
+        auto name = NextLabel();
+
+        auto literal = GetElemName(position, 1);
+
+        data << "; " << literal << std::endl;
+        data << name;
+
+        for ( int i = 2; i < literal.size() - 2; ++ i ) {
+            data << "   db " <<  static_cast<int>(literal[i]) << std::endl;
         }
-        else
-        if (GetNodeName(q)==L"VAR")
-        {
-              text << L" SUB EAX,[" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]"<< endl;
-        }
-        else
-        {
-            text << L" PUSH EAX";
-            Compile(q, data, bss, text);;
-            text << L" POP EBX";
-            text << L" SUB EAX,EBX"<< endl;
-        }
-    }
-    else if (nodename== L"SUBMOV") {
+
+        data << "   db 0 " << std::endl;
+        data << std::endl;
+
+        text << " lea eax, [" << name << "]" << std::endl;
+    }else if (nodename== L"SUBMOV") {
         OpMov(position, L"sub", data, bss, text);
+    } else if (nodename== L"DEFAULT") {
+        text << CurrentSwitchDefaultLabel[CurrentSwitch]  << ":" << std::endl;
+        CurrentSwitchDefaultLabel[CurrentSwitch] = L"";
+    } else if ( nodename == L"CASE" ) {
+        z = ElemPos(position, 1);
+
+        auto zType = GetNodeName(z);
+
+        if ( PendingSwitchCaseLabel[CurrentSwitch].size() != 0 ) {
+            CurrentSwitchCaseLabel[CurrentSwitch] = PendingSwitchCaseLabel[CurrentSwitch];
+        } else {
+            CurrentSwitchCaseLabel[CurrentSwitch] = NextLabel();
+        }
+
+        text << CurrentSwitchCaseLabel[CurrentSwitch] << ": ; case " << GetElemName(z, 1) << std::endl;
+
+        if ( zType == L"INT" || zType == L"ONUMBER" ) {
+            auto val = GetElemName(z, 1);
+            text << " pop eax" << std::endl;
+            text << " push eax" << std::endl;
+            text << " cmp eax, dword " << val << std::endl;
+            PendingSwitchCaseLabel[CurrentSwitch] = NextLabel();
+            text << " jnz " << PendingSwitchCaseLabel[CurrentSwitch] << std::endl;
+        } else {
+            SemErr(L"Only integral literals supported for switch cases. ");
+            text << zType << " unsupported for case " << std::endl;
+        }
     }
     else if (nodename== L"SWITCH") {
-        // todo
-        text<<"TODO - SWITCH" << endl;
+        CurrentSwitch ++;
+
+
+        auto ref = ElemPos(position, 1);
+        auto block = ElemPos(position, 2);
+
+        auto evalBlock = NextLabel();
+        CurrentSwitchEndLabel[CurrentSwitch]  = NextLabel();
+        CurrentSwitchDefaultLabel[CurrentSwitch] = NextLabel();
+        auto defaultLabel = CurrentSwitchDefaultLabel[CurrentSwitch];
+
+
+        Compile(ref, data, bss, text);
+
+        text << " push eax" << std::endl;
+
+        Compile(block, data, bss, text);
+
+        if ( PendingSwitchCaseLabel[CurrentSwitch].size() != 0 ) {
+            text << PendingSwitchCaseLabel[CurrentSwitch] << ":" << std::endl;
+            text << " jmp " << defaultLabel << std::endl;
+            PendingSwitchCaseLabel[CurrentSwitch] = L"";
+        }
+        if ( CurrentSwitchDefaultLabel[CurrentSwitch].size() != 0 ) {
+            text << defaultLabel << ":" << std::endl;
+        }
+
+        text << CurrentSwitchEndLabel[CurrentSwitch]  << ":" << std::endl;
+
+        text << " pop eax" << std::endl;
+
+        CurrentSwitch --;
     }
     else if (nodename== L"UNEG") {
         z = ElemPos(position, 1);
 
-        text << "; uneg";
 
         if ( GetNodeName(z) == L"INT" ) {
-            text << " mov eax, " << GetElemName(z, 1) << endl;
+            text << " mov eax, dword " << GetElemName(z, 1) << endl;
         } else if ( GetNodeName(z) == L"VAR" ) {
             text << " mov eax, [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
         } else {
             Compile(z, data, bss, text);
         }
 
-        text << " neg eax";
+        text << " neg eax" << std::endl;
     }
     else if (nodename== L"UNOT") {
         z = ElemPos(position, 1);
 
-        text << "; unot";
 
         if ( GetNodeName(z) == L"INT" ) {
-            text << " mov eax, " << GetElemName(z, 1) << endl;
+            text << " mov eax, dword " << GetElemName(z, 1) << endl;
         } else if ( GetNodeName(z) == L"VAR" ) {
             text << " mov eax, [" << GetLocalVar( GetElemName( z , 1 ) ).GetName() << "]" << endl;
         } else {
             Compile(z, data, bss, text);
         }
 
-        text << " not eax";
+        text << " not eax" << std::endl;
     }
     else if (nodename== L"UMINUS") {
         z = ElemPos(position, 1);
 
         auto zType = GetNodeName(z);
 
-        if ( zType == L"VAR" ) {
-            text << L" lea ebx, [" << GetLocalVar( GetElemName( z, 1 ) ).GetName() << std::endl
-                 << L" mov eax, [ebx]" << std::endl
-                 << L" neg eax" << std::endl
-                 << L" mov [ebx], eax" << std::endl;
-        } else {
-            SemErr(L"Invalid operand for uminus");
-        }
+        Compile(z, data, bss, text);
+
+        text << L" neg eax" << std::endl
+             << L" mov [ebx], eax" << std::endl;
     }
     else if (nodename== L"UPLUS") {
         // Podrzan radi simetrije sa unarnim minusom, ali nema prave funkcije.
     }
     else if (nodename== L"VAR") {
-        text << L" MOV EAX, [" << GetElemName(position,1)<<"]"<< endl;
-    }
-    else if (nodename== L"XOR") {
-        z=ElemPos(position,1);
-        q=ElemPos(position,2);
-        Compile(z, data, bss, text);;
-        if (GetNodeName(q)==L"INT")
-        {
-              text << L" XOR EAX,"<< GetElemName(q,1)<< endl ;
-        }
-        else
-        if (GetNodeName(q)==L"VAR")
-        {
-              text << L" XOR EAX,[" << GetLocalVar( GetElemName( q , 1 ) ).GetName() << "]"<< endl;
-        }
-        else
-        {
-            text << L" PUSH EAX";
-            Compile(q, data, bss, text);;
-            text << L" POP EBX";
-            text << L" XOR EAX,EBX"<< endl;
-        }
+        text << L" LEA EBX, [" << GetLocalVar(GetElemName(position,1) ).GetName() <<"]"<< endl;
+        text << L" MOV EAX, [EBX]"<< endl;
     }
     else if (nodename== L"XORMOV") {
         OpMov(position, L"xor", data, bss, text);

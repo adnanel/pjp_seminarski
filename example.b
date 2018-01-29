@@ -1,63 +1,60 @@
+/*
+Imamo globalne varijablu a tipa int, i garr tipa int[10]
+*/
 a;
+garr[ 10 ];
 
-fun() {
-    return (1);
+/* pomocna funkcija za provjeru ispravnosti koda */
+assert(expected, actual, poruka) {
+    if ( expected != actual ) {
+        printf("GRESKA!!! %s. Ocekivao vrijednost %d, dobio %d  ", poruka, expected, actual);
+    }
 }
+
 
 bmain() {
-/*
-    auto arr [ 10 ];
-    auto i 5;
-    auto j;
-    a = 5;
-    a =+ 3;
-    a =+ a + 1;
-    a =+ a;
-    a === a;
-*/
-    auto i 100;
+    /*
+    Ako zelimo da iskoristimo globalnu varijablu unutar neke funkcije, moramo je deklarisati
+    sa kljucnom rijeci "extrn". U protivnom ce kompajler javiti semanticku gresku.
+    */
+    extrn a;
 
-    while ( i > 25 ) {
-        -- i;
+    /*
+    Deklaraciju lokalnih varijabli radimo uz kljucnu rijec auto.
+    Primjetite kako se inicijalizira varijaba "broj" na vrijednost 5.
+    */
+    auto broj 5, niz[10]; /* niz od 10 integera */
+
+    /*
+    proba petlje i postfiksnog operatora --,
+    a ce na kraju biti 0 a elementi niza ce se
+    inicijalizirati na sekvencu 14,13,12,11,9,8,7,6,5
+    */
+    a = 10;
+    while ( a-- > 0 ) {
+        niz[a] = broj + a;
+        assert(broj + a, niz[a], "Element niza nije postavljen na ispravnu vrijednost?");
     }
+    assert(-1, a, "A na kraju petlje nije -1?");
 
-    i = '5';
-
-    goto label;
-
-    return (a);
-label:
-    return (i);
-}
-
-
-abmain (b) {
-  auto a, d;
-  a=2+b;
-}
-
-subr (c) {
-  auto c,hahj;
-  extrn a;
-  c=a;
-
-  if ( c < a ) {
-    c = 1;
-  } else {
-    c = 0;
-  }
-
-  c = &a;
+    auto b a;
+return (a);
+    /*
+    B podrzava razne unarne operatore. Slijedi proba istih.
+    */
+    ++a;
+    a++;
+    --a;
+    a--;
 
 
-  if ( c < a ) {
-    c = 10;
-  }
-
-  while ( c < a ) {
-    c = c + 1;
-  }
-
-
-  c = a < 1 ? fun() : 1 + 2;
+    a = 0;
+    a === 1;
+    a =!= 1;
+    a =<= 1;
+    a =>= 1;
+    a =& 1;
+    a =| 1;
+    a =/ 1;
+    a =* 1;
 }

@@ -53,6 +53,9 @@ EOF                              (. ParseList+=L")"; .)
 
                                  (. std::wstringstream text; .)
                                  (. text << L"segment .text;" << std::endl << std::endl; .)
+                                 (. text << L"; Built-in functions" << std::endl; .)
+                                 (. text << L"extern  _scanf, _printf, _getchar, _putchar, _fputs" << std::endl; .)
+                                 (. text << L"" << std::endl; .)
 
 
                                  (. Compile(0, data, bss, text); .)
@@ -191,7 +194,14 @@ Initializator                    (. ParseList.insert(position,L"(INIT " ); Parse
   "case" ConstVal
   ':'                            (.  ParseList.insert(position,L"(CASE " ); ParseList.append(L" ) " ); .)
   |  "default" ':'                (.  ParseList.append(L"(DEFAULT) "); .)
-  | GotoLabel <name>              (.  ParseList.append(L"(LABEL ");ParseList.append(name); ;ParseList.append(L" )");.)
+  | GotoLabel <name>              (.  if(std::wstring(name) == L"default") { .)
+                                  (.        ParseList.append(L"(DEFAULT) "); .)
+                                  (.  }  else {  .)
+                                  (.        ParseList.append(L"(LABEL "); .)
+                                  (.        ParseList.append(name);  .)
+                                  (.        ParseList.append(L" )"); .)
+                                  (.  } .)
+
   .
 
   StatementExpression
@@ -286,6 +296,8 @@ Ident<name>
                                   (. ParseList.append(t->val);ParseList.append(L")") ;.)
 ']'
 | number                          (. ParseList.append(L"(INIT "); .)
+                                  (. ParseList.append(t->val);ParseList.append(L")") ;.)
+| onumber                          (. ParseList.append(L"(INIT "); .)
                                   (. ParseList.append(t->val);ParseList.append(L")") ;.)
 
 ) ]                                (. ParseList.insert(position,isarray?L"(LARRDEF ":L"(LVARDEF ") ; ParseList.append(L") " ); .)
